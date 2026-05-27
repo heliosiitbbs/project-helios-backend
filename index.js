@@ -1,16 +1,18 @@
+import "dotenv/config";
+
 import express from "express";
-import dotenv from "dotenv";
-
-dotenv.config({ quiet: true });
-
+import { runHealthChecks } from "./utils/Healthcheck.js";
+import authRoutes from "./routes/authRoutes.js";
+import menuRoutes from "./routes/menuRoutes.js";
 const app = express();
-
 app.use(express.json());
 
-app.get("/", (req, res) => {
-  res.send("Backend is running");
-});
+await runHealthChecks();
 
+
+
+app.use("/api/auth", authRoutes);
+app.use("/api/menu", menuRoutes);
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
