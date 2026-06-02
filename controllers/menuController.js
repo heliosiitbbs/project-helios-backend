@@ -341,3 +341,291 @@ export const editMessFoodItems = async (req, res) => {
         });
     }
 };
+
+
+
+export const uploadFullMessMenu = async (req, res) => {
+    try {
+        const {
+            hostel_name,
+            compulsory = [],
+            menu = []
+        } = req.body;
+
+        // Step 1: Basic validation
+        if (!hostel_name) {
+            return res.status(400).json({
+                success: false,
+                message: "hostel_name is required"
+            });
+        }
+
+        if (!Array.isArray(compulsory)) {
+            return res.status(400).json({
+                success: false,
+                message: "compulsory must be an array"
+            });
+        }
+
+        if (!Array.isArray(menu)) {
+            return res.status(400).json({
+                success: false,
+                message: "menu must be an array"
+            });
+        }
+
+        if (compulsory.length === 0 && menu.length === 0) {
+            return res.status(400).json({
+                success: false,
+                message: "At least compulsory or menu data is required"
+            });
+        }
+
+        const validDays = [
+            "Sunday",
+            "Monday",
+            "Tuesday",
+            "Wednesday",
+            "Thursday",
+            "Friday",
+            "Saturday"
+        ];
+
+        const normalizeMeal = (meal) => meal.trim().toLowerCase();
+
+        const normalizeDay = (day) => {
+            const formatted =
+                day.charAt(0).toUpperCase() + day.slice(1).toLowerCase();
+
+            return formatted;
+        };
+
+        // Step 2: Validate compulsory data
+        for (const item of compulsory) {
+            if (
+                !item.type_of_meal ||
+                !Array.isArray(item.food_items)
+            ) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Each compulsory item must contain type_of_meal and food_items array"
+                });
+            }
+        }
+
+        // Step 3: Validate daily menu data
+        for (const item of menu) {
+            if (
+                !item.day_of_the_week ||
+                !item.type_of_meal ||
+                !Array.isArray(item.food_items)
+            ) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Each menu item must contain day_of_the_week, type_of_meal and food_items array"
+                });
+            }
+
+            const normalizedDay = normalizeDay(item.day_of_the_week);
+
+            if (!validDays.includes(normalizedDay)) {
+                return res.status(400).json({
+                    success: false,
+                    message: `${item.day_of_the_week} is not a valid day`
+                });
+            }
+        }
+
+        // Step 4: Check duplicate compulsory records inside request body
+        const compulsoryKeys = new Set();
+
+        for (const item of compulsory) {
+            const key = `${hostel_name}:${normalizeMeal(item.type_of_meal)}`;
+
+            if (compulsoryKeys.has(key)) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Duplicate compulsory item found in request body",
+                    duplicate: {
+                        hostel_name,
+                        type_of_meal: item.type_of_meal
+                    }
+                });
+            }
+
+            compulsoryKeys.add(key);
+        }
+
+        // Step 5: Check duplicate daily menu records inside request body
+        const menuKeys = new Set();
+
+        for (const item of menu) {
+            const day = normalizeDay(item.day_of_the_week);
+            const meal = normalizeMeal(item.type_of_meal);
+
+            const key = `${hostel_name}:${day}:${meal}`;
+
+            if (menuKeys.has(key)) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Duplicate menu item found in request body",
+                    duplicate: {
+                        hostel_name,
+                        day_of_the_week: day,
+                        type_of_meal: meal
+                    }
+                });
+            }
+
+            menuKeys.add(key);
+        }
+
+        // Step 6: Fetch existing compulsory data from database
+        const { data: existingCompulsory, error: compulsoryFetchError } =
+            await supabase
+                .from("Mess_Menu_Compulsory")
+                .select("hostel_name, type_of_meal")
+                .eq("hostel_name", hostel_name);
+
+        if (compulsoryFetchError) throw compulsoryFetchError;
+
+        // Step 7: Check if compulsory data already exists
+        const existingCompulsorySet = new Set(
+            existingCompulsory.map(
+                (item) =>
+                    `${item.hostel_name}:${item.type_of_meal.toLowerCase()}`
+            )
+        );
+
+        const compulsoryDuplicates = compulsory.filter((item) => {
+            const key = `${hostel_name}:${normalizeMeal(item.type_of_meal)}`;
+            return existingCompulsorySet.has(key);
+        });
+
+        if (compulsoryDuplicates.length > 0) {
+            return res.status(409).json({
+                success: false,
+                message: "Some compulsory menu records already exist. Upload stopped.",
+                duplicates: compulsoryDuplicates.map((item) => ({
+                    hostel_name,
+                    type_of_meal: normalizeMeal(item.type_of_meal)
+                }))
+            });
+        }
+
+        // Step 8: Fetch existing daily menu data from database
+        const { data: existingMenu, error: menuFetchError } =
+            await supabase
+                .from("Mess_Menu")
+                .select("hostel_name, day_of_the_week, type_of_meal")
+                .eq("hostel_name", hostel_name);
+
+        if (menuFetchError) throw menuFetchError;
+
+        // Step 9: Check if daily menu already exists
+        const existingMenuSet = new Set(
+            existingMenu.map(
+                (item) =>
+                    `${item.hostel_name}:${item.day_of_the_week}:${item.type_of_meal.toLowerCase()}`
+            )
+        );
+
+        const menuDuplicates = menu.filter((item) => {
+            const day = normalizeDay(item.day_of_the_week);
+            const meal = normalizeMeal(item.type_of_meal);
+
+            const key = `${hostel_name}:${day}:${meal}`;
+
+            return existingMenuSet.has(key);
+        });
+
+        if (menuDuplicates.length > 0) {
+            return res.status(409).json({
+                success: false,
+                message: "Some daily menu records already exist. Upload stopped.",
+                duplicates: menuDuplicates.map((item) => ({
+                    hostel_name,
+                    day_of_the_week: normalizeDay(item.day_of_the_week),
+                    type_of_meal: normalizeMeal(item.type_of_meal)
+                }))
+            });
+        }
+
+        // Step 10: Prepare compulsory rows for insert
+        const compulsoryRows = compulsory.map((item) => ({
+            hostel_name,
+            type_of_meal: normalizeMeal(item.type_of_meal),
+            food_items: item.food_items
+        }));
+
+        // Step 11: Prepare daily menu rows for insert
+        const menuRows = menu.map((item) => ({
+            hostel_name,
+            day_of_the_week: normalizeDay(item.day_of_the_week),
+            type_of_meal: normalizeMeal(item.type_of_meal),
+            item_details: item.food_items
+        }));
+
+        let insertedCompulsory = [];
+        let insertedMenu = [];
+
+        // Step 12: Insert compulsory data
+        if (compulsoryRows.length > 0) {
+            const { data, error } = await supabase
+                .from("Mess_Menu_Compulsory")
+                .insert(compulsoryRows)
+                .select();
+
+            if (error) throw error;
+
+            insertedCompulsory = data;
+        }
+
+        // Step 13: Insert daily menu data
+        if (menuRows.length > 0) {
+            const { data, error } = await supabase
+                .from("Mess_Menu")
+                .insert(menuRows)
+                .select();
+
+            if (error) throw error;
+
+            insertedMenu = data;
+        }
+
+        // Step 14: Delete related Redis cache
+        const affectedDays = new Set();
+
+        for (const item of menuRows) {
+            affectedDays.add(item.day_of_the_week);
+        }
+
+        // If compulsory items are inserted, they affect all days
+        if (compulsoryRows.length > 0) {
+            validDays.forEach((day) => affectedDays.add(day));
+        }
+
+        const cacheKeys = [...affectedDays].map(
+            (day) => `mess-menu:${hostel_name}:${day}`
+        );
+
+        await Promise.all(cacheKeys.map((key) => redis.del(key)));
+
+        return res.status(201).json({
+            success: true,
+            message: "Mess menu uploaded successfully",
+            inserted: {
+                compulsory: insertedCompulsory,
+                menu: insertedMenu
+            },
+            cacheDeleted: cacheKeys
+        });
+
+    } catch (err) {
+        return res.status(500).json({
+            success: false,
+            message: "Server Error",
+            error: err.message
+        });
+    }
+};

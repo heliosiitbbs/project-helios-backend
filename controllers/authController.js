@@ -92,13 +92,16 @@ export const loginUser = async (req, res) => {
             payload = {
                 user_type: user["User Type"],
                 rollnumber: studentDetails["Roll Number"],
-                hostel: studentDetails["Hostel_Details"]
+                hostel: studentDetails["Hostel_Details"],
+                e_mail:user["email_id"],
+                id: user.id
             };
 
         } else {
             payload = {
                 user_type: user["User Type"],
-                id: user.id
+                id: user.id,
+                e_mail:user["email_id"]
             };
         }
 
