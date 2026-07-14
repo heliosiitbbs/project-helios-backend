@@ -27,6 +27,7 @@ export async function checkRedisConnection() {
   }
 }
 
+
 export async function runHealthChecks() {
   console.log("\n--- Running connection health checks ---");
   console.log("SUPABASE_URL exists:", !!process.env.SUPABASE_URL);

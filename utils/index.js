@@ -5,6 +5,9 @@ import {
   signInWithPhoneNumber
 } from "firebase/auth";
 
+
+
+
 const firebaseConfig = {
   apiKey: "AIzaSyCdRlc-YjjiQ248wHQue8yyhG-oUI2ZZ20",
   authDomain: "helios-iitbbs.firebaseapp.com",
@@ -29,6 +32,8 @@ window.recaptchaVerifier = new RecaptchaVerifier(
     },
   }
 );
+
+
 
 // Send OTP
 const phoneNumber = "+917396425771";
