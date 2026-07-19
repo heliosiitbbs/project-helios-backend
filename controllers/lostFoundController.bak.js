@@ -1,8 +1,6 @@
 import supabase from "../config/Supabase.js";
 import jwt from "jsonwebtoken";
 
-
-
 // =======================
 // FUNCTION 1
 // REPORT LOST ITEM
@@ -360,9 +358,7 @@ try{
 // =======================
 
 const {
-item_id,
-all,
-person_id
+item_id
 }
 =
 req.query;
@@ -397,18 +393,7 @@ item_id
 );
 
 }
-
-if(person_id){
-
-query =
-query.eq(
-"Person_id",
-person_id
-);
-
-}
-
-if(!all && !item_id){
+else{
 
 query =
 query.eq(

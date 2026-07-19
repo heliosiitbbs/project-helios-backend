@@ -73,37 +73,21 @@ message:
 const {
 location,
 description,
-phone_number,
-category: rawCategory
+phone_number
 }
 =
 req.body;
 
-// Map user-friendly category name (e.g. 'Bottle') to database enum value (e.g. 'bottles')
-const category = (() => {
-  if (!rawCategory) return null;
-  const c = rawCategory.trim().toLowerCase();
-  if (c === "bottle" || c === "bottles") return "bottles";
-  if (c === "id card" || c === "id_card") return "id card";
-  if (c === "phone & accessories" || c === "phone accessories") return "phone accessories";
-  if (c === "keys" || c === "key") return "keys";
-  if (c === "phone") return "phone";
-  if (c === "bag" || c === "bags") return "bag";
-  if (c === "others" || c === "other") return "others";
-  return c;
-})();
-
 if(
 !location ||
 !description ||
-!phone_number ||
-!category
+!phone_number
 ){
 
 return res.status(400).json({
 success:false,
 message:
-"location, description, phone_number and category are required"
+"location, description and phone_number are required"
 });
 
 }
@@ -275,9 +259,6 @@ description,
 "Phone Number":
 phone_number,
 
-category:
-category,
-
 is_resolved:
 false
 
@@ -360,9 +341,7 @@ try{
 // =======================
 
 const {
-item_id,
-all,
-person_id
+item_id
 }
 =
 req.query;
@@ -397,18 +376,7 @@ item_id
 );
 
 }
-
-if(person_id){
-
-query =
-query.eq(
-"Person_id",
-person_id
-);
-
-}
-
-if(!all && !item_id){
+else{
 
 query =
 query.eq(
@@ -457,6 +425,7 @@ error.message
 return res.status(200).json({
 
 success:true,
+
 items:data
 
 });
