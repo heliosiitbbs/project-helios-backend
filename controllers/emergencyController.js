@@ -1,24 +1,14 @@
 import jwt from "jsonwebtoken";
 import supabase from "../config/Supabase.js";
-<<<<<<< HEAD
-
-// =====================================
-// GET EMERGENCY CONTACTS
-=======
 import redis from "../config/redis.js";
 
 // =====================================
 // GET ALL EMERGENCY CONTACTS
->>>>>>> origin/trilok-featues
 // =====================================
 
 export const getEmergencyContacts = async (req, res) => {
     try {
-<<<<<<< HEAD
-        const authHeader = req.headers.authorization;
-
-        if (!authHeader || !authHeader.startsWith("Bearer ")) {
-=======
+    
 
         const authHeader = req.headers.authorization;
 
@@ -104,7 +94,6 @@ export const editEmergencyContact = async (req, res) => {
             !authHeader ||
             !authHeader.startsWith("Bearer ")
         ) {
->>>>>>> origin/trilok-featues
             return res.status(401).json({
                 success: false,
                 message: "Access token missing"
@@ -118,21 +107,6 @@ export const editEmergencyContact = async (req, res) => {
             process.env.JWT_SECRET
         );
 
-<<<<<<< HEAD
-        const { data, error } = await supabase
-            .from("emergency_contacts")
-            .select(`
-                category,
-                Office_Staff_Details!Officer_id(
-                    Designation,
-                    Location,
-                    User_Details!user_code(
-                        "User Name",
-                        email_id,
-                        phone_number
-                    )
-                )
-=======
         if (
             decoded.user_type !== "Admin"
         ) {
@@ -171,35 +145,10 @@ export const editEmergencyContact = async (req, res) => {
                 email_id,
                 phone_number,
                 is_emergency_number
->>>>>>> origin/trilok-featues
             `);
 
         if (error) throw error;
 
-<<<<<<< HEAD
-        const contacts = data.map((contact) => ({
-            category: contact.category,
-            name:
-                contact.Office_Staff_Details.User_Details["User Name"],
-
-            designation:
-                `${contact.Office_Staff_Details.Designation} (${contact.Office_Staff_Details.Location})`,
-
-            email:
-                contact.Office_Staff_Details.User_Details.email_id,
-
-            phone_number:
-                contact.Office_Staff_Details.User_Details.phone_number
-        }));
-
-        return res.status(200).json({
-            success: true,
-            userType: decoded.user_type,
-            contacts
-        });
-
-    } catch (err) {
-=======
         // Clear Redis cache
         await redis.del(
             "emergency-contacts"
@@ -213,18 +162,11 @@ export const editEmergencyContact = async (req, res) => {
 
     } catch (err) {
 
->>>>>>> origin/trilok-featues
         return res.status(500).json({
             success: false,
             message: "Server Error",
             error: err.message
         });
-<<<<<<< HEAD
-    }
-};
-
-=======
 
     }
 };
->>>>>>> origin/trilok-featues

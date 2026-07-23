@@ -1,6 +1,7 @@
 import "dotenv/config";
 
 import express from "express";
+import cors from "cors";
 import { runHealthChecks } from "./utils/Healthcheck.js";
 import authRoutes from "./routes/authRoutes.js";
 import menuRoutes from "./routes/menuRoutes.js";
@@ -16,6 +17,7 @@ import subjectRoutes from "./routes/subjectRoutes.js";
 import studentRoutes from "./routes/studentRoutes.js";
 import userRoutes from "./routes/userRoutes.js";
 const app = express();
+app.use(cors());
 app.use(express.json());
 
 await runHealthChecks();
