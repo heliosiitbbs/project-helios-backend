@@ -136,12 +136,6 @@ import  supabase  from "../config/Supabase.js";
 
 // 1. UPDATE PASSWORD
 export const updateInitialPassword = async (req, res) => {
-    if (!req.body) {
-        return res.status(400).json({
-            success: false,
-            message: "Request body is missing. Ensure you are sending application/json content type and body."
-        });
-    }
     const { email_id, newPassword } = req.body;
 
     try {
@@ -173,12 +167,6 @@ export const updateInitialPassword = async (req, res) => {
 
 // 2. LOGIN
 export const loginUser = async (req, res) => {
-    if (!req.body) {
-        return res.status(400).json({
-            success: false,
-            message: "Request body is missing. Ensure you are sending application/json content type and body."
-        });
-    }
     const { email_id, password } = req.body;
 
     try {
