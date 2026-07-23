@@ -178,6 +178,7 @@ export const addBusSchedule = async (req, res) => {
 // =====================================
 // GET ALL SCHEDULES (ADMIN ONLY)
 // =====================================
+
 export const getAllBusSchedules = async (req, res) => {
     try {
         const authHeader = req.headers.authorization;
@@ -203,13 +204,33 @@ export const getAllBusSchedules = async (req, res) => {
             });
         }
 
+        const cacheKey = "bus-schedule:all";
+
+        const cachedData = await redis.get(cacheKey);
+
+        if (cachedData) {
+            return res.json({
+                success: true,
+                source: "redis",
+                schedules: cachedData
+            });
+        }
+
         const { data, error } = await supabase
             .from("Bus_Schedule")
             .select("*");
 
         if (error) throw error;
 
-        return res.status(200).json({
+        await redis.set(
+            cacheKey,
+            data,
+            {
+                ex: 3600
+            }
+        );
+
+        return res.json({
             success: true,
             source: "supabase",
             schedules: data
