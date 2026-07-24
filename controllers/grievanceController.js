@@ -21,13 +21,18 @@ export const getUnresolvedGrievances = async (req, res) => {
 export const uploadGrievance = async (req, res) => {
     const { description, proof, grievance_type } = req.body;
 
-    // Students can only file on their own behalf; Admins may specify a student_id explicitly
+    // student_id is a foreign key to Student_Details."Roll Number", not User_Details.id -
+    // students can only file on their own behalf; Admins may specify a student_id explicitly
     const student_id =
         req.user.user_type === "Admin" && req.body.student_id
             ? req.body.student_id
-            : req.user.id;
+            : req.user.rollnumber;
 
-    if (!student_id || !description) {
+    if (!student_id) {
+        return res.status(400).json({ success: false, message: "Only students can file grievances." });
+    }
+
+    if (!description) {
         return res.status(400).json({ success: false, message: "description is required." });
     }
 
@@ -92,10 +97,16 @@ export const assignGrievance = async (req, res) => {
         return res.status(400).json({ success: false, message: "grievance_id and assigned_to are required." });
     }
 
+    // "assigned to" is a foreign key to User_Details.id (integer), not a free-text name
+    const assignedToId = Number(assigned_to);
+    if (!Number.isInteger(assignedToId)) {
+        return res.status(400).json({ success: false, message: "assigned_to must be a numeric user ID." });
+    }
+
     try {
         const { data, error } = await supabase
             .from("Hostel_Grievances")
-            .update({ "assigned to": assigned_to }) // Handles space in 'assigned to' column
+            .update({ "assigned to": assignedToId }) // Handles space in 'assigned to' column
             .eq("id", grievance_id)
             .select()
             .maybeSingle();
@@ -138,16 +149,17 @@ export const markResolved = async (req, res) => {
 
 // 5. GET GRIEVANCE HISTORY BY STUDENT
 export const getGrievanceHistory = async (req, res) => {
-    const requestedStudentId = req.query.student_id || req.body.student_id;
+    const requestedStudentId = req.query?.student_id || req.body?.student_id;
 
-    // Non-admins can only ever read their own history, regardless of what's requested
+    // Non-admins can only ever read their own history, regardless of what's requested.
+    // student_id is a foreign key to Student_Details."Roll Number", not User_Details.id.
     const student_id =
         req.user.user_type === "Admin" && requestedStudentId
             ? requestedStudentId
-            : req.user.id;
+            : req.user.rollnumber;
 
     if (!student_id) {
-        return res.status(400).json({ success: false, message: "student_id parameter is required." });
+        return res.status(400).json({ success: false, message: "Only students have grievance history." });
     }
 
     try {
