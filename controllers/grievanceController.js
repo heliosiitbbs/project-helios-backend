@@ -46,7 +46,7 @@ export const uploadGrievance = async (req, res) => {
             const filePath = `grievance_proofs/${safeStudentId}_${Date.now()}.${fileExtension}`;
 
             const { data: uploadData, error: uploadError } = await supabase.storage
-                .from("Grievance_Proofs")
+                .from("grievance_proofs")
                 .upload(filePath, req.file.buffer, {
                     contentType: req.file.mimetype
                 });
@@ -60,7 +60,7 @@ export const uploadGrievance = async (req, res) => {
             }
 
             const { data: publicUrlData } = supabase.storage
-                .from("Grievance_Proofs")
+                .from("grievance_proofs")
                 .getPublicUrl(uploadData.path);
 
             proofValue = publicUrlData.publicUrl;
