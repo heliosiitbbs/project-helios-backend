@@ -1,5 +1,16 @@
 import "dotenv/config";
 
+// Node terminates the process on an unhandled rejection by default (since v15) -
+// without these, a stray async error anywhere would silently kill the server
+// with no indication of what happened.
+process.on("unhandledRejection", (reason) => {
+    console.error("Unhandled Rejection:", reason);
+});
+
+process.on("uncaughtException", (err) => {
+    console.error("Uncaught Exception:", err);
+});
+
 import express from "express";
 import cors from "cors";
 import { runHealthChecks } from "./utils/Healthcheck.js";
@@ -16,8 +27,26 @@ import grievanceRoutes from "./routes/grievanceRoutes.js";
 import subjectRoutes from "./routes/subjectRoutes.js";
 import studentRoutes from "./routes/studentRoutes.js";
 import userRoutes from "./routes/userRoutes.js";
+const allowedOrigins = (process.env.CORS_ALLOWED_ORIGINS || "")
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+
+const corsOptions = {
+    origin: (origin, callback) => {
+        // Native mobile clients (Expo/React Native fetch) don't send an Origin header
+        if (!origin) return callback(null, true);
+
+        if (process.env.NODE_ENV !== "production") return callback(null, true);
+
+        if (allowedOrigins.includes(origin)) return callback(null, true);
+
+        return callback(new Error("Not allowed by CORS"));
+    }
+};
+
 const app = express();
-app.use(cors());
+app.use(cors(corsOptions));
 app.use(express.json());
 
 await runHealthChecks();
@@ -37,6 +66,22 @@ app.use("/api/students", studentRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/bus", busRoutes);
 app.use("/api/emergency", emergencyRoutes);
+
+app.use((err, req, res, next) => {
+    console.error(err);
+
+    if (err.code === "LIMIT_FILE_SIZE") {
+        return res.status(400).json({
+            success: false,
+            message: "File too large"
+        });
+    }
+
+    return res.status(err.status || 500).json({
+        success: false,
+        message: err.publicMessage || "Server Error"
+    });
+});
 
 const PORT = process.env.PORT || 3000;
 

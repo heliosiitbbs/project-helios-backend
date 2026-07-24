@@ -1,4 +1,3 @@
-import jwt from "jsonwebtoken";
 import supabase from "../config/Supabase.js";
 
 // =====================================
@@ -7,22 +6,6 @@ import supabase from "../config/Supabase.js";
 
 export const getPostLikes = async (req, res) => {
     try {
-        const authHeader = req.headers.authorization;
-
-        if (!authHeader || !authHeader.startsWith("Bearer ")) {
-            return res.status(401).json({
-                success: false,
-                message: "Access token missing"
-            });
-        }
-
-        const token = authHeader.split(" ")[1];
-
-        jwt.verify(
-            token,
-            process.env.JWT_SECRET
-        );
-
         const { id } = req.params;
 
         if (!id) {
@@ -50,11 +33,10 @@ export const getPostLikes = async (req, res) => {
         });
 
     } catch (err) {
+        console.error(err);
         return res.status(500).json({
             success: false,
-            message: "Server Error",
-            error: err.message
-        });
+            message: "Server Error"});
     }
 };
 
@@ -64,22 +46,6 @@ export const getPostLikes = async (req, res) => {
 
 export const likePost = async (req, res) => {
     try {
-        const authHeader = req.headers.authorization;
-
-        if (!authHeader || !authHeader.startsWith("Bearer ")) {
-            return res.status(401).json({
-                success: false,
-                message: "Access token missing"
-            });
-        }
-
-        const token = authHeader.split(" ")[1];
-
-        const decoded = jwt.verify(
-            token,
-            process.env.JWT_SECRET
-        );
-
         const { id } = req.params;
 
         if (!id) {
@@ -89,7 +55,7 @@ export const likePost = async (req, res) => {
             });
         }
 
-        const rollnumber = decoded.rollnumber;
+        const rollnumber = req.user.rollnumber;
 
         if (!rollnumber) {
             return res.status(400).json({
@@ -173,11 +139,10 @@ export const likePost = async (req, res) => {
         });
 
     } catch (err) {
+        console.error(err);
         return res.status(500).json({
             success: false,
-            message: "Server Error",
-            error: err.message
-        });
+            message: "Server Error"});
     }
 };
 
@@ -187,22 +152,6 @@ export const likePost = async (req, res) => {
 
 export const unlikePost = async (req, res) => {
     try {
-        const authHeader = req.headers.authorization;
-
-        if (!authHeader || !authHeader.startsWith("Bearer ")) {
-            return res.status(401).json({
-                success: false,
-                message: "Access token missing"
-            });
-        }
-
-        const token = authHeader.split(" ")[1];
-
-        const decoded = jwt.verify(
-            token,
-            process.env.JWT_SECRET
-        );
-
         const { id } = req.params;
 
         if (!id) {
@@ -212,7 +161,7 @@ export const unlikePost = async (req, res) => {
             });
         }
 
-        const rollnumber = decoded.rollnumber;
+        const rollnumber = req.user.rollnumber;
 
         if (!rollnumber) {
             return res.status(400).json({
@@ -279,10 +228,9 @@ export const unlikePost = async (req, res) => {
         });
 
     } catch (err) {
+        console.error(err);
         return res.status(500).json({
             success: false,
-            message: "Server Error",
-            error: err.message
-        });
+            message: "Server Error"});
     }
 };

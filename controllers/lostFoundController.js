@@ -1,5 +1,4 @@
 import supabase from "../config/Supabase.js";
-import jwt from "jsonwebtoken";
 
 
 
@@ -13,45 +12,12 @@ export const reportLostItem = async (req,res)=>{
 try{
 
 // =======================
-// STEP 1
-// CHECK AUTH HEADER
+// STEP 1 & 2
+// IDENTITY FROM AUTH MIDDLEWARE
 // =======================
-
-const authHeader =
-req.headers.authorization;
-
-if(!authHeader){
-
-return res.status(401).json({
-success:false,
-message:"Token missing"
-});
-
-}
-
-
-
-// =======================
-// STEP 2
-// VERIFY JWT
-// =======================
-
-const token =
-authHeader.split(" ")[1];
-
-const decoded =
-jwt.verify(
-token,
-process.env.JWT_SECRET
-);
 
 const emailId =
-decoded.e_mail;
-
-console.log(
-"JWT EMAIL:",
-emailId
-);
+req.user.e_mail;
 
 if(!emailId){
 
@@ -204,16 +170,12 @@ req.file.mimetype
 
 if(uploadError){
 
+console.error(uploadError);
 return res.status(500).json({
 
 success:false,
 message:
-"Error uploading image to Supabase Storage",
-
-error:
-uploadError.message
-
-});
+"Error uploading image to Supabase Storage"});
 
 }
 
@@ -288,16 +250,12 @@ false
 
 if(insertError){
 
+console.error(insertError);
 return res.status(500).json({
 
 success:false,
 message:
-"Error inserting lost item",
-
-error:
-insertError.message
-
-});
+"Error inserting lost item"});
 
 }
 
@@ -327,13 +285,11 @@ createdItem
 
 }catch(err){
 
+console.error(err);
 return res.status(500).json({
 
 success:false,
-message:"Server Error",
-error:err.message
-
-});
+message:"Server Error"});
 
 }
 
@@ -366,6 +322,20 @@ person_id
 }
 =
 req.query;
+
+if(
+person_id &&
+person_id !== req.user.e_mail &&
+req.user.user_type !== "Admin"
+){
+
+return res.status(403).json({
+success:false,
+message:
+"You can only view your own reported items"
+});
+
+}
 
 
 
@@ -434,16 +404,12 @@ await query;
 
 if(error){
 
+console.error(error);
 return res.status(500).json({
 
 success:false,
 message:
-"Error fetching lost items",
-
-error:
-error.message
-
-});
+"Error fetching lost items"});
 
 }
 
@@ -463,13 +429,11 @@ items:data
 
 }catch(err){
 
+console.error(err);
 return res.status(500).json({
 
 success:false,
-message:"Server Error",
-error:err.message
-
-});
+message:"Server Error"});
 
 }
 
@@ -521,6 +485,63 @@ message:
 
 
 
+// =======================
+// STEP 1B
+// CHECK OWNERSHIP
+// =======================
+
+const {
+data:existingItem,
+error:fetchError
+}
+=
+await supabase
+.from(
+"lost_and_found_details"
+)
+.select("Person_id")
+.eq(
+"id",
+item_id
+)
+.maybeSingle();
+
+if(fetchError){
+
+console.error(fetchError);
+return res.status(500).json({
+
+success:false,
+message:
+"Error fetching item"});
+
+}
+
+if(!existingItem){
+
+return res.status(404).json({
+
+success:false,
+message:"Item not found"
+
+});
+
+}
+
+if(existingItem.Person_id !== req.user.e_mail){
+
+return res.status(403).json({
+
+success:false,
+message:
+"Only the person who reported this item can mark it resolved"
+
+});
+
+}
+
+
+
 
 // =======================
 // STEP 2
@@ -560,16 +581,12 @@ item_id
 
 if(error){
 
+console.error(error);
 return res.status(500).json({
 
 success:false,
 message:
-"Error resolving item",
-
-error:
-error.message
-
-});
+"Error resolving item"});
 
 }
 
@@ -608,13 +625,11 @@ data[0]
 
 }catch(err){
 
+console.error(err);
 return res.status(500).json({
 
 success:false,
-message:"Server Error",
-error:err.message
-
-});
+message:"Server Error"});
 
 }
 

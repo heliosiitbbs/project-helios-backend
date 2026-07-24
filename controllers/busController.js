@@ -1,4 +1,3 @@
-import jwt from "jsonwebtoken";
 import supabase from "../config/Supabase.js";
 import redis from "../config/redis.js";
 
@@ -8,22 +7,6 @@ import redis from "../config/redis.js";
 
 export const getBusSchedule = async (req, res) => {
     try {
-        const authHeader = req.headers.authorization;
-
-        if (!authHeader || !authHeader.startsWith("Bearer ")) {
-            return res.status(401).json({
-                success: false,
-                message: "Access token missing"
-            });
-        }
-
-        const token = authHeader.split(" ")[1];
-
-        const decoded = jwt.verify(
-            token,
-            process.env.JWT_SECRET
-        );
-
         const {
             day_of_week,
             time,
@@ -63,28 +46,26 @@ export const getBusSchedule = async (req, res) => {
         const filteredBuses = buses.filter((bus) => {
             const routeArray = bus.Route;
 
-            const startIdx =
-                routeArray.indexOf(start_Location);
+            if (start_Location || end_Location) {
+                const startIdx = start_Location
+                    ? routeArray.indexOf(start_Location)
+                    : 0;
 
-            const endIdx =
-                routeArray.indexOf(end_Location);
+                const endIdx = end_Location
+                    ? routeArray.indexOf(end_Location)
+                    : routeArray.length - 1;
 
-            if (
-                startIdx === -1 ||
-                endIdx === -1
-            ) {
-                return false;
-            }
-
-            if (startIdx >= endIdx) {
-                return false;
+                if (
+                    startIdx === -1 ||
+                    endIdx === -1 ||
+                    startIdx >= endIdx
+                ) {
+                    return false;
+                }
             }
 
             if (time && bus.start_time) {
-                return (
-                    bus.start_time >= time &&
-                    startIdx < endIdx
-                );
+                return bus.start_time >= time;
             }
 
             return true;
@@ -92,17 +73,16 @@ export const getBusSchedule = async (req, res) => {
 
         return res.status(200).json({
             success: true,
-            userType: decoded.user_type,
+            userType: req.user.user_type,
             source,
             buses: filteredBuses
         });
 
     } catch (err) {
+        console.error(err);
         return res.status(500).json({
             success: false,
-            message: "Server Error",
-            error: err.message
-        });
+            message: "Server Error"});
     }
 };
 
@@ -112,29 +92,6 @@ export const getBusSchedule = async (req, res) => {
 
 export const addBusSchedule = async (req, res) => {
     try {
-        const authHeader = req.headers.authorization;
-
-        if (!authHeader || !authHeader.startsWith("Bearer ")) {
-            return res.status(401).json({
-                success: false,
-                message: "Access token missing"
-            });
-        }
-
-        const token = authHeader.split(" ")[1];
-
-        const decoded = jwt.verify(
-            token,
-            process.env.JWT_SECRET
-        );
-
-        if (decoded.user_type !== "Admin") {
-            return res.status(403).json({
-                success: false,
-                message: "Admin access required"
-            });
-        }
-
         const {
             bus_number,
             day_of_week,
@@ -167,11 +124,10 @@ export const addBusSchedule = async (req, res) => {
         });
 
     } catch (err) {
+        console.error(err);
         return res.status(500).json({
             success: false,
-            message: "Server Error",
-            error: err.message
-        });
+            message: "Server Error"});
     }
 };
 
@@ -181,29 +137,6 @@ export const addBusSchedule = async (req, res) => {
 
 export const getAllBusSchedules = async (req, res) => {
     try {
-        const authHeader = req.headers.authorization;
-
-        if (!authHeader || !authHeader.startsWith("Bearer ")) {
-            return res.status(401).json({
-                success: false,
-                message: "Access token missing"
-            });
-        }
-
-        const token = authHeader.split(" ")[1];
-
-        const decoded = jwt.verify(
-            token,
-            process.env.JWT_SECRET
-        );
-
-        if (decoded.user_type !== "Admin") {
-            return res.status(403).json({
-                success: false,
-                message: "Admin access required"
-            });
-        }
-
         const cacheKey = "bus-schedule:all";
 
         const cachedData = await redis.get(cacheKey);
@@ -237,10 +170,9 @@ export const getAllBusSchedules = async (req, res) => {
         });
 
     } catch (err) {
+        console.error(err);
         return res.status(500).json({
             success: false,
-            message: "Server Error",
-            error: err.message
-        });
+            message: "Server Error"});
     }
 };

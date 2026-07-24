@@ -1,4 +1,3 @@
-import jwt from "jsonwebtoken";
 import supabase from "../config/Supabase.js";
 import redis from "../config/redis.js";
 
@@ -36,22 +35,8 @@ export const getMenu = async (req, res) => {
             });
         }
 
-        // Step 3: Get token from Authorization header
-        const authHeader = req.headers.authorization;
-
-        if (!authHeader || !authHeader.startsWith("Bearer ")) {
-            return res.status(401).json({
-                success: false,
-                message: "Access token missing"
-            });
-        }
-
-        const token = authHeader.split(" ")[1];
-
-        // Step 4: Verify JWT token
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
-
-        const hostelName = decoded.hostel;
+        // Step 3: Get hostel from the authenticated user's token
+        const hostelName = req.user.hostel;
 
         if (!hostelName) {
             return res.status(400).json({
@@ -132,11 +117,10 @@ export const getMenu = async (req, res) => {
         });
 
     } catch (err) {
+        console.error(err);
         return res.status(500).json({
             success: false,
-            message: "Server Error",
-            error: err.message
-        });
+            message: "Server Error"});
     }
 };
 
@@ -221,11 +205,10 @@ export const getFullWeekMenuByHostel = async (req, res) => {
         });
 
     } catch (err) {
+        console.error(err);
         return res.status(500).json({
             success: false,
-            message: "Server Error",
-            error: err.message
-        });
+            message: "Server Error"});
     }
 };
 
@@ -334,11 +317,10 @@ export const editMessFoodItems = async (req, res) => {
         });
 
     } catch (err) {
+        console.error(err);
         return res.status(500).json({
             success: false,
-            message: "Server Error",
-            error: err.message
-        });
+            message: "Server Error"});
     }
 };
 
@@ -622,10 +604,9 @@ export const uploadFullMessMenu = async (req, res) => {
         });
 
     } catch (err) {
+        console.error(err);
         return res.status(500).json({
             success: false,
-            message: "Server Error",
-            error: err.message
-        });
+            message: "Server Error"});
     }
 };

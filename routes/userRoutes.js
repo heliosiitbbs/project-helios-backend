@@ -1,6 +1,6 @@
 import express from "express";
 import multer from "multer";
-import { updatePhoneNumber,uploadUserPhoto } from "../controllers/userController.js";
+import { getMyProfile, updatePhoneNumber,uploadUserPhoto } from "../controllers/userController.js";
 import { protect } from "../middlewares/authMiddleware.js";
 const router = express.Router();
 const upload = multer({
@@ -9,6 +9,7 @@ const upload = multer({
     fileSize: 2 * 1024 * 1024 // 2 MB
   }
 });
+router.get("/me", protect, getMyProfile);
 router.patch("/update-phone-number", protect,updatePhoneNumber);
 
 

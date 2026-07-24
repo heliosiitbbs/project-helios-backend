@@ -1,4 +1,3 @@
-import jwt from "jsonwebtoken";
 import supabase from "../config/Supabase.js";
 
 // =====================================
@@ -7,22 +6,6 @@ import supabase from "../config/Supabase.js";
 
 export const getPostComments = async (req, res) => {
     try {
-        const authHeader = req.headers.authorization;
-
-        if (!authHeader || !authHeader.startsWith("Bearer ")) {
-            return res.status(401).json({
-                success: false,
-                message: "Access token missing"
-            });
-        }
-
-        const token = authHeader.split(" ")[1];
-
-        jwt.verify(
-            token,
-            process.env.JWT_SECRET
-        );
-
         const { id } = req.params;
 
         if (!id) {
@@ -50,11 +33,10 @@ export const getPostComments = async (req, res) => {
         });
 
     } catch (err) {
+        console.error(err);
         return res.status(500).json({
             success: false,
-            message: "Server Error",
-            error: err.message
-        });
+            message: "Server Error"});
     }
 };
 
@@ -64,22 +46,6 @@ export const getPostComments = async (req, res) => {
 
 export const addPostComment = async (req, res) => {
     try {
-        const authHeader = req.headers.authorization;
-
-        if (!authHeader || !authHeader.startsWith("Bearer ")) {
-            return res.status(401).json({
-                success: false,
-                message: "Access token missing"
-            });
-        }
-
-        const token = authHeader.split(" ")[1];
-
-        const decoded = jwt.verify(
-            token,
-            process.env.JWT_SECRET
-        );
-
         const { id } = req.params;
         const { comment } = req.body;
 
@@ -100,7 +66,7 @@ export const addPostComment = async (req, res) => {
             });
         }
 
-        const rollnumber = decoded.rollnumber;
+        const rollnumber = req.user.rollnumber;
 
         if (!rollnumber) {
             return res.status(400).json({
@@ -164,11 +130,10 @@ export const addPostComment = async (req, res) => {
         });
 
     } catch (err) {
+        console.error(err);
         return res.status(500).json({
             success: false,
-            message: "Server Error",
-            error: err.message
-        });
+            message: "Server Error"});
     }
 };
 
@@ -178,22 +143,6 @@ export const addPostComment = async (req, res) => {
 
 export const deletePostComment = async (req, res) => {
     try {
-        const authHeader = req.headers.authorization;
-
-        if (!authHeader || !authHeader.startsWith("Bearer ")) {
-            return res.status(401).json({
-                success: false,
-                message: "Access token missing"
-            });
-        }
-
-        const token = authHeader.split(" ")[1];
-
-        const decoded = jwt.verify(
-            token,
-            process.env.JWT_SECRET
-        );
-
         const {
             id,
             commentId
@@ -227,8 +176,8 @@ export const deletePostComment = async (req, res) => {
             });
         }
 
-        if (decoded.user_type !== "Admin") {
-            const rollnumber = decoded.rollnumber;
+        if (req.user.user_type !== "Admin") {
+            const rollnumber = req.user.rollnumber;
 
             if (!rollnumber) {
                 return res.status(400).json({
@@ -297,10 +246,9 @@ export const deletePostComment = async (req, res) => {
         });
 
     } catch (err) {
+        console.error(err);
         return res.status(500).json({
             success: false,
-            message: "Server Error",
-            error: err.message
-        });
+            message: "Server Error"});
     }
 };

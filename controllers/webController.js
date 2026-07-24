@@ -1,4 +1,3 @@
-import jwt from "jsonwebtoken";
 import supabase from "../config/Supabase.js";
 import redis from "../config/redis.js";
 
@@ -8,22 +7,6 @@ import redis from "../config/redis.js";
 
 export const getAllWebsites = async (req, res) => {
     try {
-        const authHeader = req.headers.authorization;
-
-        if (!authHeader || !authHeader.startsWith("Bearer ")) {
-            return res.status(401).json({
-                success: false,
-                message: "Access token missing"
-            });
-        }
-
-        const token = authHeader.split(" ")[1];
-
-        jwt.verify(
-            token,
-            process.env.JWT_SECRET
-        );
-
         const cacheKey =
             "redirect-websites:all-websites";
 
@@ -60,11 +43,10 @@ export const getAllWebsites = async (req, res) => {
         });
 
     } catch (err) {
+        console.error(err);
         return res.status(500).json({
             success: false,
-            message: "Server Error",
-            error: err.message
-        });
+            message: "Server Error"});
     }
 };
 
@@ -74,22 +56,6 @@ export const getAllWebsites = async (req, res) => {
 
 export const getWebsiteByName = async (req, res) => {
     try {
-        const authHeader = req.headers.authorization;
-
-        if (!authHeader || !authHeader.startsWith("Bearer ")) {
-            return res.status(401).json({
-                success: false,
-                message: "Access token missing"
-            });
-        }
-
-        const token = authHeader.split(" ")[1];
-
-        jwt.verify(
-            token,
-            process.env.JWT_SECRET
-        );
-
         const { website_name } = req.params;
 
         const cacheKey =
@@ -133,11 +99,10 @@ export const getWebsiteByName = async (req, res) => {
         });
 
     } catch (err) {
+        console.error(err);
         return res.status(500).json({
             success: false,
-            message: "Server Error",
-            error: err.message
-        });
+            message: "Server Error"});
     }
 };
 
@@ -147,29 +112,6 @@ export const getWebsiteByName = async (req, res) => {
 
 export const addWebsite = async (req, res) => {
     try {
-        const authHeader = req.headers.authorization;
-
-        if (!authHeader || !authHeader.startsWith("Bearer ")) {
-            return res.status(401).json({
-                success: false,
-                message: "Access token missing"
-            });
-        }
-
-        const token = authHeader.split(" ")[1];
-
-        const decoded = jwt.verify(
-            token,
-            process.env.JWT_SECRET
-        );
-
-        if (decoded.user_type !== "Admin") {
-            return res.status(403).json({
-                success: false,
-                message: "Admin access required"
-            });
-        }
-
         const {
             website_name,
             website_link,
@@ -207,10 +149,9 @@ export const addWebsite = async (req, res) => {
         });
 
     } catch (err) {
+        console.error(err);
         return res.status(500).json({
             success: false,
-            message: "Server Error",
-            error: err.message
-        });
+            message: "Server Error"});
     }
 };

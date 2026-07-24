@@ -1,5 +1,6 @@
 import express from "express";
-import { protect } from "../middlewares/authMiddleware.js"; // Uses your current auth protection layer
+import { protect, authorize } from "../middlewares/authMiddleware.js"; // Uses your current auth protection layer
+import uploadGrievanceProof from "../middlewares/uploadGrievanceProof.js";
 import {
     getUnresolvedGrievances,
     uploadGrievance,
@@ -15,10 +16,10 @@ const router = express.Router();
 router.use(protect);
 
 router.get("/get-unresolved-grievances", getUnresolvedGrievances);
-router.post("/upload-grievances", uploadGrievance);
-router.post("/assign-grievance", assignGrievance);
+router.post("/upload-grievances", uploadGrievanceProof.single("proof"), uploadGrievance);
+router.post("/assign-grievance", authorize('Admin'), assignGrievance);
 router.post("/mark-resolved", markResolved);
 router.get("/get-grievance-history", getGrievanceHistory);
-router.get("/get-all-grievances", getAllGrievances);
+router.get("/get-all-grievances", authorize('Admin'), getAllGrievances);
 
 export default router;

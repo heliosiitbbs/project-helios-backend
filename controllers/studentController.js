@@ -137,13 +137,13 @@ export const uploadStudents = async (req, res) => {
         .single();
 
       if (userError) {
+        console.error(userError);
         insertedStudents.push({
           success: false,
           rollNumber,
           studentName,
           emailId,
-          message: "Error inserting into User_Details",
-          error: userError.message
+          message: "Error inserting into User_Details"
         });
 
         continue;
@@ -165,14 +165,14 @@ export const uploadStudents = async (req, res) => {
         .single();
 
       if (studentError) {
+        console.error(studentError);
         insertedStudents.push({
           success: false,
           rollNumber,
           studentName,
           emailId,
           userCode,
-          message: "User inserted, but Student_Details insert failed",
-          error: studentError.message
+          message: "User inserted, but Student_Details insert failed"
         });
 
         continue;
@@ -206,11 +206,10 @@ export const uploadStudents = async (req, res) => {
   } catch (err) {
     console.log("UPLOAD STUDENTS ERROR:", err);
 
+    console.error(err);
     return res.status(500).json({
       success: false,
-      message: "Server error",
-      error: err.message
-    });
+      message: "Server error"});
   }
 };
 
@@ -347,13 +346,13 @@ export const updateStudentRooms = async (req, res) => {
         .select();
 
       if (error) {
+        console.error(error);
         updateResults.push({
           success: false,
           rollNumber,
           hostelName,
           roomNo,
-          message: "Error updating student details",
-          error: error.message
+          message: "Error updating student details"
         });
 
         continue;
@@ -398,11 +397,10 @@ export const updateStudentRooms = async (req, res) => {
   } catch (err) {
     console.log("UPDATE STUDENT ROOMS ERROR:", err);
 
+    console.error(err);
     return res.status(500).json({
       success: false,
-      message: "Server error",
-      error: err.message
-    });
+      message: "Server error"});
   }
 };
 
@@ -549,12 +547,12 @@ export const invalidateStudents = async (req, res) => {
         .single();
 
       if (updateError) {
+        console.error(updateError);
         invalidateResults.push({
           success: false,
           studentId,
           userCode,
-          message: "Error invalidating user",
-          error: updateError.message
+          message: "Error invalidating user"
         });
 
         continue;
@@ -586,11 +584,10 @@ export const invalidateStudents = async (req, res) => {
   } catch (err) {
     console.log("INVALIDATE STUDENTS ERROR:", err);
 
+    console.error(err);
     return res.status(500).json({
       success: false,
-      message: "Server error",
-      error: err.message
-    });
+      message: "Server error"});
   }
 };
 
@@ -717,12 +714,12 @@ export const updateFacultyAdvisers = async (req, res) => {
         .select();
 
       if (error) {
+        console.error(error);
         updateResults.push({
           success: false,
           rollNumber,
           facultyAdviser,
-          message: "Error updating faculty adviser",
-          error: error.message
+          message: "Error updating faculty adviser"
         });
 
         continue;
@@ -765,11 +762,10 @@ export const updateFacultyAdvisers = async (req, res) => {
   } catch (err) {
     console.log("UPDATE FACULTY ADVISERS ERROR:", err);
 
+    console.error(err);
     return res.status(500).json({
       success: false,
-      message: "Server error",
-      error: err.message
-    });
+      message: "Server error"});
   }
 };
 
@@ -803,11 +799,10 @@ export const updateFacultyAdviserByRollNumber = async (req, res) => {
       .single();
 
     if (error) {
+      console.error(error);
       return res.status(500).json({
         success: false,
-        message: "Error updating faculty adviser",
-        error: error.message
-      });
+        message: "Error updating faculty adviser"});
     }
 
     return res.status(200).json({
@@ -817,11 +812,10 @@ export const updateFacultyAdviserByRollNumber = async (req, res) => {
     });
 
   } catch (err) {
+    console.error(err);
     return res.status(500).json({
       success: false,
-      message: "Server error",
-      error: err.message
-    });
+      message: "Server error"});
   }
 };
 
@@ -844,11 +838,10 @@ export const invalidateStudentByRollNumber = async (req, res) => {
       .maybeSingle();
 
     if (studentError) {
+      console.error(studentError);
       return res.status(500).json({
         success: false,
-        message: "Error fetching student",
-        error: studentError.message
-      });
+        message: "Error fetching student"});
     }
 
     if (!studentData) {
@@ -877,11 +870,10 @@ export const invalidateStudentByRollNumber = async (req, res) => {
       .maybeSingle();
 
     if (updateError) {
+      console.error(updateError);
       return res.status(500).json({
         success: false,
-        message: "Error invalidating student",
-        error: updateError.message
-      });
+        message: "Error invalidating student"});
     }
 
     if (!updatedUser) {
@@ -900,11 +892,10 @@ export const invalidateStudentByRollNumber = async (req, res) => {
     });
 
   } catch (err) {
+    console.error(err);
     return res.status(500).json({
       success: false,
-      message: "Server error",
-      error: err.message
-    });
+      message: "Server error"});
   }
 };
 

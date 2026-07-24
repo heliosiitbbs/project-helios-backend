@@ -1,5 +1,50 @@
 import supabase from "../config/Supabase.js";
-import jwt from "jsonwebtoken";
+
+export const getMyProfile = async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from("User_Details")
+      .select(`"User Name", email_id, phone_number, "User Type", photoUrl`)
+      .eq("id", req.user.id)
+      .maybeSingle();
+
+    if (error) {
+      console.error(error);
+      return res.status(500).json({
+        success: false,
+        message: "Error fetching profile"
+      });
+    }
+
+    if (!data) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found"
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      user: {
+        id: req.user.id,
+        name: data["User Name"],
+        email: data.email_id,
+        phoneNumber: data.phone_number,
+        userType: data["User Type"],
+        photoUrl: data.photoUrl,
+        rollnumber: req.user.rollnumber || null,
+        hostel: req.user.hostel || null
+      }
+    });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({
+      success: false,
+      message: "Server Error"
+    });
+  }
+};
+
 export const updatePhoneNumber = async (req, res) => {
   try {
     const { phone_number } = req.body;
@@ -22,23 +67,9 @@ export const updatePhoneNumber = async (req, res) => {
       });
     }
 
-    // Step 2: Get token from Authorization header
-    const authHeader = req.headers.authorization;
-
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      return res.status(401).json({
-        success: false,
-        message: "Access token missing"
-      });
-    }
-
-    const token = authHeader.split(" ")[1];
-
-    // Step 3: Verify JWT token
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-
-    // In your login payload, email is stored as e_mail
-    const emailId = decoded.e_mail;
+    // Step 2: Identity comes from the authenticated user's token
+    // In the login payload, email is stored as e_mail
+    const emailId = req.user.e_mail;
 
     if (!emailId) {
       return res.status(400).json({
@@ -58,11 +89,10 @@ export const updatePhoneNumber = async (req, res) => {
       .maybeSingle();
 
     if (error) {
+      console.error(error);
       return res.status(500).json({
         success: false,
-        message: "Error updating phone number",
-        error: error.message
-      });
+        message: "Error updating phone number"});
     }
 
     if (!data) {
@@ -80,11 +110,10 @@ export const updatePhoneNumber = async (req, res) => {
     });
 
   } catch (err) {
+    console.error(err);
     return res.status(500).json({
       success: false,
-      message: "Server Error",
-      error: err.message
-    });
+      message: "Server Error"});
   }
 };
 
@@ -140,11 +169,10 @@ export const uploadUserPhoto = async (req, res) => {
       });
 
     if (uploadError) {
+      console.error(uploadError);
       return res.status(500).json({
         success: false,
-        message: "Error uploading photo to Supabase Storage",
-        error: uploadError.message
-      });
+        message: "Error uploading photo to Supabase Storage"});
     }
 
     // Step 6: Get public URL
@@ -172,11 +200,10 @@ export const uploadUserPhoto = async (req, res) => {
       .maybeSingle();
 
     if (updateError) {
+      console.error(updateError);
       return res.status(500).json({
         success: false,
-        message: "Photo uploaded, but failed to update User_Details",
-        error: updateError.message
-      });
+        message: "Photo uploaded, but failed to update User_Details"});
     }
 
     if (!updatedUser) {
@@ -196,10 +223,9 @@ export const uploadUserPhoto = async (req, res) => {
     });
 
   } catch (err) {
+    console.error(err);
     return res.status(500).json({
       success: false,
-      message: "Server Error",
-      error: err.message
-    });
+      message: "Server Error"});
   }
 };

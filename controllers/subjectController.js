@@ -51,11 +51,10 @@ export const addSubjects = async (req, res) => {
       .select();
 
     if (error) {
+      console.error(error);
       return res.status(500).json({
         success: false,
-        message: "Failed to add subjects",
-        error: error.message
-      });
+        message: "Failed to add subjects"});
     }
 
     return res.status(201).json({
@@ -66,11 +65,10 @@ export const addSubjects = async (req, res) => {
     });
 
   } catch (error) {
+    console.error(error);
     return res.status(500).json({
       success: false,
-      message: "Internal server error",
-      error: error.message
-    });
+      message: "Internal server error"});
   }
 };
 
@@ -84,10 +82,10 @@ export const getSubjescts = async (req, res) => {
             data
         }); 
     } catch (error) {
+        console.error(error);
         res.status(500).json({
             success: false,
-            message: "Internal server error",
-            error: error.message
+            message: "Internal server error"
         });
     }
 }
@@ -163,11 +161,10 @@ export const uploadSubjects = async (req, res) => {
       .select();
 
     if (error) {
+      console.error(error);
       return res.status(500).json({
         success: false,
-        message: "Error inserting subjects",
-        error: error.message
-      });
+        message: "Error inserting subjects"});
     }
 
     return res.status(201).json({
@@ -180,10 +177,9 @@ export const uploadSubjects = async (req, res) => {
     });
 
   } catch (err) {
+    console.error(err);
     return res.status(500).json({
       success: false,
-      message: "Server error",
-      error: err.message
-    });
+      message: "Server error"});
   }
 };

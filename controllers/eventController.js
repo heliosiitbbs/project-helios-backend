@@ -58,11 +58,10 @@ export const uploadEventData = async (req, res) => {
         });
 
     } catch (err) {
+        console.error(err);
         return res.status(500).json({
             success: false,
-            message: "Server Error processing data upload.",
-            error: err.message
-        });
+            message: "Server Error processing data upload."});
     }
 };
 
@@ -102,11 +101,10 @@ export const approveVerifier = async (req, res) => {
         });
 
     } catch (err) {
+        console.error(err);
         return res.status(500).json({
             success: false,
-            message: "Server Error authorizing verifier.",
-            error: err.message
-        });
+            message: "Server Error authorizing verifier."});
     }
 };
 
@@ -165,55 +163,15 @@ export const approveApplicant = async (req, res) => {
         });
 
     } catch (err) {
+        console.error(err);
         return res.status(500).json({
             success: false,
-            message: "Server Error verifying pass entry.",
-            error: err.message
-        });
+            message: "Server Error verifying pass entry."});
     }
 };
 
 // ==========================================
-// 4. GET ALL APPLICANT STATUS (Flexible)
-// ==========================================
-// export const getAllApplicantStatus = async (req, res) => {
-//     // OPTIMIZATION: Accept via query OR request body to make frontend integration easier
-//     const event_id = req.query.event_id || req.body.event_id;
-
-//     if (!event_id) {
-//         return res.status(400).json({
-//             success: false,
-//             message: "event_id is required as a query parameter or body variable."
-//         });
-//     }
-
-//     try {
-//         const { data: passes, error } = await supabase
-//             .from("event_passes")
-//             .select("applicant_id, has_completed")
-//             .eq("event_id", event_id);
-
-//         if (error) throw error;
-
-//         return res.status(200).json({
-//             success: true,
-//             event_id,
-//             total_applicants: passes.length,
-//             applicants: passes
-//         });
-
-//     } catch (err) {
-//         return res.status(500).json({
-//             success: false,
-//             message: "Server Error pulling verification tracking records.",
-//             error: err.message
-//         });
-//     }
-// };
-
-
-// ==========================================
-// 4. GET ALL APPLICANT STATUS (Bulletproof Version)
+// 4. GET ALL APPLICANT STATUS (Admin/organizer roster view)
 // ==========================================
 export const getAllApplicantStatus = async (req, res) => {
     try {
@@ -246,10 +204,66 @@ export const getAllApplicantStatus = async (req, res) => {
         });
 
     } catch (err) {
+        console.error(err);
         return res.status(500).json({
             success: false,
-            message: "Server Error pulling verification tracking records.",
-            error: err.message
+            message: "Server Error pulling verification tracking records."});
+    }
+};
+
+// ==========================================
+// 5. GET MY EVENT PASSES (Student self-serve)
+// ==========================================
+// Note: applicant_id is a free-text field set by whoever calls upload-data,
+// so it isn't guaranteed to be any one identity field - match against every
+// identity value this user's token carries.
+export const getMyEventPasses = async (req, res) => {
+    try {
+        const identityCandidates = [
+            req.user.id,
+            req.user.e_mail,
+            req.user.rollnumber
+        ]
+            .filter(Boolean)
+            .map(String);
+
+        const { data: passes, error } = await supabase
+            .from("event_passes")
+            .select("event_id, applicant_id, has_completed")
+            .in("applicant_id", identityCandidates);
+
+        if (error) throw error;
+
+        const eventIds = [...new Set(passes.map((p) => p.event_id))];
+
+        let eventsById = {};
+        if (eventIds.length > 0) {
+            const { data: events, error: eventsError } = await supabase
+                .from("event_details")
+                .select("event_id, event_name, start_time, end_time")
+                .in("event_id", eventIds);
+
+            if (eventsError) throw eventsError;
+
+            eventsById = Object.fromEntries(events.map((e) => [e.event_id, e]));
+        }
+
+        const enrichedPasses = passes.map((p) => ({
+            ...p,
+            event_name: eventsById[p.event_id]?.event_name || null,
+            start_time: eventsById[p.event_id]?.start_time || null,
+            end_time: eventsById[p.event_id]?.end_time || null
+        }));
+
+        return res.status(200).json({
+            success: true,
+            passes: enrichedPasses
         });
+
+    } catch (err) {
+        console.error(err);
+        return res.status(500).json({
+            success: false,
+            message: "Server Error pulling your event passes."});
     }
 };

@@ -1,4 +1,3 @@
-import jwt from "jsonwebtoken";
 import supabase from "../config/Supabase.js";
 import redis from "../config/redis.js";
 
@@ -8,27 +7,6 @@ import redis from "../config/redis.js";
 
 export const getEmergencyContacts = async (req, res) => {
     try {
-    
-
-        const authHeader = req.headers.authorization;
-
-        if (
-            !authHeader ||
-            !authHeader.startsWith("Bearer ")
-        ) {
-            return res.status(401).json({
-                success: false,
-                message: "Access token missing"
-            });
-        }
-
-        const token = authHeader.split(" ")[1];
-
-        jwt.verify(
-            token,
-            process.env.JWT_SECRET
-        );
-
         const cacheKey = "emergency-contacts";
 
         const cachedData = await redis.get(cacheKey);
@@ -71,11 +49,10 @@ export const getEmergencyContacts = async (req, res) => {
 
     } catch (err) {
 
+        console.error(err);
         return res.status(500).json({
             success: false,
-            message: "Server Error",
-            error: err.message
-        });
+            message: "Server Error"});
 
     }
 };
@@ -87,35 +64,6 @@ export const getEmergencyContacts = async (req, res) => {
 
 export const editEmergencyContact = async (req, res) => {
     try {
-
-        const authHeader = req.headers.authorization;
-
-        if (
-            !authHeader ||
-            !authHeader.startsWith("Bearer ")
-        ) {
-            return res.status(401).json({
-                success: false,
-                message: "Access token missing"
-            });
-        }
-
-        const token = authHeader.split(" ")[1];
-
-        const decoded = jwt.verify(
-            token,
-            process.env.JWT_SECRET
-        );
-
-        if (
-            decoded.user_type !== "Admin"
-        ) {
-            return res.status(403).json({
-                success: false,
-                message: "Admin access required"
-            });
-        }
-
         const {
             email_id,
             is_emergency_number
@@ -162,11 +110,10 @@ export const editEmergencyContact = async (req, res) => {
 
     } catch (err) {
 
+        console.error(err);
         return res.status(500).json({
             success: false,
-            message: "Server Error",
-            error: err.message
-        });
+            message: "Server Error"});
 
     }
 };
