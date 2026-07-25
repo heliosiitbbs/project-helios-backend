@@ -1,7 +1,7 @@
 import express from "express";
 import { protect } from "../middlewares/authMiddleware.js";
 import uploadGuestHouseDocs from "../middlewares/uploadGuestHouseDocs.js";
-import { createBooking, getMyBookings } from "../controllers/guestHouseController.js";
+import { createBooking, getMyBookings, getBlankForm } from "../controllers/guestHouseController.js";
 
 const router = express.Router();
 
@@ -16,5 +16,6 @@ router.post(
 );
 
 router.get("/my-bookings", protect, getMyBookings);
+router.get("/blank-form", protect, getBlankForm);
 
 export default router;

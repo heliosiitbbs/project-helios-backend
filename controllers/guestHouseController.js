@@ -16,6 +16,31 @@ const VALID_SERVICE_TYPES = [
     "Meeting Room & Dining"
 ];
 
+const BLANK_FORM_PATH = "Blank From/Requisition form for Booking or Cancellation.pdf";
+
+// =====================================
+// GET BLANK REQUISITION FORM
+// =====================================
+
+export const getBlankForm = async (req, res) => {
+    try {
+        const { data } = supabase.storage
+            .from("guest_house_forms")
+            .getPublicUrl(BLANK_FORM_PATH);
+
+        return res.status(200).json({
+            success: true,
+            url: data.publicUrl
+        });
+    } catch (err) {
+        console.error(err);
+        return res.status(500).json({
+            success: false,
+            message: "Error fetching blank form"
+        });
+    }
+};
+
 async function uploadDoc(file, folder, safeId) {
     const fileExtension = file.originalname.split(".").pop();
     const filePath = `${folder}/${safeId}_${Date.now()}.${fileExtension}`;
