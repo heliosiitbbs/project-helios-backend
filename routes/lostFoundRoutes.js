@@ -8,7 +8,8 @@ import { protect } from "../middlewares/authMiddleware.js";
 import {
 reportLostItem,
 getLostItems,
-reportResolved
+reportResolved,
+sendHandoverOTP
 }
 from "../controllers/lostFoundController.js";
 
@@ -20,6 +21,12 @@ router.post(
 protect,
 upload.single("photo"),
 reportLostItem
+);
+
+router.post(
+"/send-otp",
+protect,
+sendHandoverOTP
 );
 
 router.get(

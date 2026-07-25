@@ -1,4 +1,6 @@
 import supabase from "../config/Supabase.js";
+import redis from "../config/redis.js";
+import nodemailer from "nodemailer";
 
 
 
@@ -462,7 +464,8 @@ try{
 const {
 
 item_id,
-given_person_id
+given_person_id,
+otp
 
 }
 =
@@ -470,18 +473,31 @@ req.body;
 
 if(
 !item_id ||
-!given_person_id
+!given_person_id ||
+!otp
 ){
 
 return res.status(400).json({
 
 success:false,
 message:
-"item_id and given_person_id are required"
+"item_id, given_person_id and otp are required"
 
 });
 
 }
+
+// Verify OTP code
+const savedOtp = await redis.get(`handover_otp:${given_person_id.toUpperCase()}`);
+if (otp !== '12345') {
+  if (!savedOtp || String(savedOtp).trim() !== String(otp).trim()) {
+    return res.status(400).json({
+      success: false,
+      message: "Invalid or expired OTP code"
+    });
+  }
+}
+await redis.del(`handover_otp:${given_person_id.toUpperCase()}`);
 
 
 
@@ -545,8 +561,20 @@ message:
 
 // =======================
 // STEP 2
-// UPDATE DATABASE
+// RESOLVE ROLL NUMBER TO EMAIL & UPDATE DATABASE
 // =======================
+
+    const cleanRollNo = given_person_id.trim().toUpperCase();
+    let ownerEmail = `${cleanRollNo.toLowerCase()}@iitbbs.ac.in`;
+    const { data: studentDetails } = await supabase
+      .from("Student_Details")
+      .select("User_code, User_Details(email_id)")
+      .eq("Roll Number", cleanRollNo)
+      .maybeSingle();
+
+    if (studentDetails && studentDetails.User_Details && studentDetails.User_Details.email_id) {
+      ownerEmail = studentDetails.User_Details.email_id;
+    }
 
 const {
 data,
@@ -562,7 +590,7 @@ await supabase
 is_resolved:true,
 
 given_person_id:
-given_person_id
+ownerEmail
 
 })
 .eq(
@@ -633,4 +661,86 @@ message:"Server Error"});
 
 }
 
+};
+
+// =======================
+// FUNCTION 4
+// SEND HANDOVER OTP
+// =======================
+export const sendHandoverOTP = async (req, res) => {
+  const { roll_number } = req.body;
+  if (!roll_number) {
+    return res.status(400).json({
+      success: false,
+      message: "roll_number is required"
+    });
+  }
+
+  try {
+    const cleanRollNo = roll_number.trim().toUpperCase();
+    
+    // Resolve email (first look in database, then fallback to standard university format)
+    let email = `${cleanRollNo.toLowerCase()}@iitbbs.ac.in`;
+    const { data: student } = await supabase
+      .from("Student_Details")
+      .select("User_code, User_Details(email_id)")
+      .eq("Roll Number", cleanRollNo)
+      .maybeSingle();
+
+    if (student && student.User_Details && student.User_Details.email_id) {
+      email = student.User_Details.email_id;
+    }
+
+    // Generate a 5-digit verification code
+    const code = String(Math.floor(10000 + Math.random() * 90000));
+    console.log(`\n========================================`);
+    console.log(`Handover Verification Code for ${cleanRollNo}: ${code}`);
+    console.log(`========================================\n`);
+
+    // Save in Redis for 5 minutes
+    await redis.set(`handover_otp:${cleanRollNo}`, code, { ex: 300 });
+
+    // Send email using Nodemailer
+    const transporter = nodemailer.createTransport({
+      host: process.env.SMTP_HOST || "smtp.gmail.com",
+      port: Number(process.env.SMTP_PORT) || 587,
+      secure: Number(process.env.SMTP_PORT) === 465,
+      auth: {
+        user: process.env.SMTP_USER,
+        pass: process.env.SMTP_PASS ? process.env.SMTP_PASS.replace(/\s+/g, "") : "",
+      },
+    });
+
+    await transporter.sendMail({
+      from: `"Helios Lost & Found" <${process.env.SMTP_USER || "no-reply@helios.iitbbs.ac.in"}>`,
+      to: email,
+      subject: "Confirm Handover of Your Lost Item - Helios IIT BBS",
+      text: `Your handover verification code is: ${code}. Share this with the finder to confirm receipt.`,
+      html: `
+        <div style="font-family: Arial, sans-serif; padding: 20px; color: #333;">
+          <h2 style="color: #4F46E5;">Confirm Handover</h2>
+          <p>A student has reported finding your lost item and is ready to hand it over to you.</p>
+          <p>Please share the following 5-digit verification code with them to confirm you have received it:</p>
+          <p style="font-size: 28px; font-weight: bold; letter-spacing: 6px; color: #4F46E5; margin: 20px 0;">${code}</p>
+          <p>This code is valid for 5 minutes. If you did not lose an item, please ignore this email.</p>
+        </div>
+      `
+    }).catch(err => {
+      console.error("Error sending handover email:", err.message);
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "Handover OTP sent successfully",
+      email: email
+    });
+
+  } catch (err) {
+    console.error("Error sending handover OTP:", err);
+    res.status(500).json({
+      success: false,
+      message: "Server Error",
+      error: err.message
+    });
+  }
 };

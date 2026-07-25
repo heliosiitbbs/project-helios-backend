@@ -3,7 +3,10 @@ import rateLimit from "express-rate-limit";
 
 import {
     loginUser,
-    updateInitialPassword
+    updateInitialPassword,
+    sendAuthVerification,
+    verifyAuthCode,
+    registerOrUpdateUserPin
 } from "../controllers/authController.js";
 
 const router = express.Router();
@@ -29,6 +32,24 @@ router.post(
     "/update-password",
     authLimiter,
     updateInitialPassword
+);
+
+router.post(
+    "/send-verification-code",
+    authLimiter,
+    sendAuthVerification
+);
+
+router.post(
+    "/verify-code",
+    authLimiter,
+    verifyAuthCode
+);
+
+router.post(
+    "/setup-pin",
+    authLimiter,
+    registerOrUpdateUserPin
 );
 
 export default router;
