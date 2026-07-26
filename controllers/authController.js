@@ -182,7 +182,11 @@ export const sendAuthVerification = async (req, res) => {
             },
         });
 
-        await transporter.sendMail({
+        // Fire-and-forget: don't make the client wait on the SMTP round trip
+        // (which can hang for minutes if SMTP creds are slow/misconfigured).
+        // The code is already saved to Redis and logged above, so verification
+        // isn't blocked on the email actually arriving.
+        transporter.sendMail({
             from: `"Helios Auth" <${process.env.SMTP_USER || "no-reply@helios.iitbbs.ac.in"}>`,
             to: email_id,
             subject: "Verify Your Email - Helios IIT BBS",
