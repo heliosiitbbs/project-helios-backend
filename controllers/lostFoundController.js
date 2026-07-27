@@ -327,7 +327,7 @@ req.query;
 
 if(
 person_id &&
-person_id !== req.user.e_mail &&
+person_id.trim().toLowerCase() !== req.user.e_mail.trim().toLowerCase() &&
 req.user.user_type !== "Admin"
 ){
 

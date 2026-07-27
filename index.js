@@ -28,6 +28,7 @@ import subjectRoutes from "./routes/subjectRoutes.js";
 import studentRoutes from "./routes/studentRoutes.js";
 import userRoutes from "./routes/userRoutes.js";
 import foodStallRoutes from "./routes/foodStallRoutes.js";
+import newsRoutes from "./routes/newsRoutes.js";
 const allowedOrigins = (process.env.CORS_ALLOWED_ORIGINS || "")
     .split(",")
     .map((origin) => origin.trim())
@@ -68,6 +69,7 @@ app.use("/api/users", userRoutes);
 app.use("/api/bus", busRoutes);
 app.use("/api/emergency", emergencyRoutes);
 app.use("/api/food-stalls", foodStallRoutes);
+app.use("/api/news", newsRoutes);
 
 app.use((err, req, res, next) => {
     console.error(err);
