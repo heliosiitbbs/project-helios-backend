@@ -4,6 +4,7 @@ import rateLimit from "express-rate-limit";
 import {
     loginUser,
     updateInitialPassword,
+    checkAccountStatus,
     sendAuthVerification,
     verifyAuthCode,
     registerOrUpdateUserPin
@@ -32,6 +33,12 @@ router.post(
     "/update-password",
     authLimiter,
     updateInitialPassword
+);
+
+router.post(
+    "/check-account",
+    authLimiter,
+    checkAccountStatus
 );
 
 router.post(

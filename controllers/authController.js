@@ -144,7 +144,38 @@ export const loginUser = async (req, res) => {
     }
 };
 
-// 3. SEND AUTH VERIFICATION CODE
+// 3. CHECK ACCOUNT STATUS (does this email already have a PIN set up?)
+export const checkAccountStatus = async (req, res) => {
+    const { email_id: rawEmail } = req.body || {};
+    if (!rawEmail) {
+        return res.status(400).json({
+            success: false,
+            message: "email_id is required"
+        });
+    }
+    const email_id = rawEmail.trim().toLowerCase();
+
+    try {
+        const { data: user } = await supabase
+            .from("User_Details")
+            .select("is_Valid")
+            .eq("email_id", email_id)
+            .maybeSingle();
+
+        res.json({
+            success: true,
+            hasPin: !!(user && user.is_Valid)
+        });
+
+    } catch (err) {
+        res.status(500).json({
+            success: false,
+            message: "Server Error"
+        });
+    }
+};
+
+// 4. SEND AUTH VERIFICATION CODE
 export const sendAuthVerification = async (req, res) => {
     if (!req.body) {
         return res.status(400).json({
@@ -182,7 +213,11 @@ export const sendAuthVerification = async (req, res) => {
             },
         });
 
-        await transporter.sendMail({
+        // Fire-and-forget: don't make the client wait on the SMTP round trip
+        // (which can hang for minutes if SMTP creds are slow/misconfigured).
+        // The code is already saved to Redis and logged above, so verification
+        // isn't blocked on the email actually arriving.
+        transporter.sendMail({
             from: `"Helios Auth" <${process.env.SMTP_USER || "no-reply@helios.iitbbs.ac.in"}>`,
             to: email_id,
             subject: "Verify Your Email - Helios IIT BBS",
@@ -213,7 +248,7 @@ export const sendAuthVerification = async (req, res) => {
     }
 };
 
-// 4. VERIFY AUTH CODE
+// 5. VERIFY AUTH CODE
 export const verifyAuthCode = async (req, res) => {
     const { email_id: rawEmail, code } = req.body;
     if (!rawEmail || !code) {
@@ -268,7 +303,7 @@ export const verifyAuthCode = async (req, res) => {
     }
 };
 
-// 5. REGISTER OR UPDATE USER PIN
+// 6. REGISTER OR UPDATE USER PIN
 export const registerOrUpdateUserPin = async (req, res) => {
     const { email_id: rawEmail, pin } = req.body;
     if (!rawEmail || !pin) {

@@ -2,7 +2,8 @@ import express from "express";
 
 import {
     getEmergencyContacts,
-    editEmergencyContact
+    addEmergencyContact,
+    removeEmergencyContact
 } from "../controllers/emergencyController.js";
 import { protect, authorize } from "../middlewares/authMiddleware.js";
 
@@ -14,11 +15,18 @@ router.get(
     getEmergencyContacts
 );
 
-router.put(
-    "/edit-emergency-contact",
+router.post(
+    "/add-emergency-contact",
     protect,
     authorize('Admin'),
-    editEmergencyContact
+    addEmergencyContact
+);
+
+router.delete(
+    "/remove-emergency-contact/:id",
+    protect,
+    authorize('Admin'),
+    removeEmergencyContact
 );
 
 export default router;
