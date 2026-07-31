@@ -1,6 +1,6 @@
 import express from "express";
 import multer from "multer";
-import { getMyProfile, updatePhoneNumber,uploadUserPhoto } from "../controllers/userController.js";
+import { getMyProfile, updatePhoneNumber, updateBloodGroup, uploadUserPhoto } from "../controllers/userController.js";
 import { protect } from "../middlewares/authMiddleware.js";
 const router = express.Router();
 const upload = multer({
@@ -11,6 +11,7 @@ const upload = multer({
 });
 router.get("/me", protect, getMyProfile);
 router.patch("/update-phone-number", protect,updatePhoneNumber);
+router.patch("/update-blood-group", protect, updateBloodGroup);
 
 
 router.patch("/upload-photo",protect,upload.single("photo"),uploadUserPhoto);

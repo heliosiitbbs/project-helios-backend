@@ -4,7 +4,7 @@ export const getMyProfile = async (req, res) => {
   try {
     const { data, error } = await supabase
       .from("User_Details")
-      .select(`"User Name", email_id, phone_number, "User Type", photoUrl`)
+      .select(`"User Name", email_id, phone_number, "User Type", photoUrl, blood_group`)
       .eq("id", req.user.id)
       .maybeSingle();
 
@@ -32,6 +32,7 @@ export const getMyProfile = async (req, res) => {
         phoneNumber: data.phone_number,
         userType: data["User Type"],
         photoUrl: data.photoUrl,
+        bloodGroup: data.blood_group,
         rollnumber: req.user.rollnumber || null,
         hostel: req.user.hostel || null
       }
@@ -117,7 +118,63 @@ export const updatePhoneNumber = async (req, res) => {
   }
 };
 
+export const updateBloodGroup = async (req, res) => {
+  try {
+    const { blood_group } = req.body;
 
+    if (!blood_group) {
+      return res.status(400).json({
+        success: false,
+        message: "blood_group is required"
+      });
+    }
+
+    // Identity comes from the authenticated user's token, same as updatePhoneNumber
+    const emailId = req.user.e_mail;
+
+    if (!emailId) {
+      return res.status(400).json({
+        success: false,
+        message: "Email not found in token"
+      });
+    }
+
+    const { data, error } = await supabase
+      .from("User_Details")
+      .update({
+        blood_group: blood_group
+      })
+      .eq("email_id", emailId)
+      .select("*")
+      .maybeSingle();
+
+    if (error) {
+      console.error(error);
+      return res.status(500).json({
+        success: false,
+        message: "Error updating blood group"});
+    }
+
+    if (!data) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found with this email"
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Blood group updated successfully",
+      data
+    });
+
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({
+      success: false,
+      message: "Server Error"});
+  }
+};
 
 
 export const uploadUserPhoto = async (req, res) => {
