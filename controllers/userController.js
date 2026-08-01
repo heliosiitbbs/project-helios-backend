@@ -1,10 +1,11 @@
+import bcrypt from "bcryptjs";
 import supabase from "../config/Supabase.js";
 
 export const getMyProfile = async (req, res) => {
   try {
     const { data, error } = await supabase
       .from("User_Details")
-      .select(`"User Name", email_id, phone_number, "User Type", photoUrl`)
+      .select(`"User Name", email_id, phone_number, "User Type", photoUrl, blood_group`)
       .eq("id", req.user.id)
       .maybeSingle();
 
@@ -32,6 +33,7 @@ export const getMyProfile = async (req, res) => {
         phoneNumber: data.phone_number,
         userType: data["User Type"],
         photoUrl: data.photoUrl,
+        bloodGroup: data.blood_group,
         rollnumber: req.user.rollnumber || null,
         hostel: req.user.hostel || null
       }
@@ -117,7 +119,63 @@ export const updatePhoneNumber = async (req, res) => {
   }
 };
 
+export const updateBloodGroup = async (req, res) => {
+  try {
+    const { blood_group } = req.body;
 
+    if (!blood_group) {
+      return res.status(400).json({
+        success: false,
+        message: "blood_group is required"
+      });
+    }
+
+    // Identity comes from the authenticated user's token, same as updatePhoneNumber
+    const emailId = req.user.e_mail;
+
+    if (!emailId) {
+      return res.status(400).json({
+        success: false,
+        message: "Email not found in token"
+      });
+    }
+
+    const { data, error } = await supabase
+      .from("User_Details")
+      .update({
+        blood_group: blood_group
+      })
+      .eq("email_id", emailId)
+      .select("*")
+      .maybeSingle();
+
+    if (error) {
+      console.error(error);
+      return res.status(500).json({
+        success: false,
+        message: "Error updating blood group"});
+    }
+
+    if (!data) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found with this email"
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Blood group updated successfully",
+      data
+    });
+
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({
+      success: false,
+      message: "Server Error"});
+  }
+};
 
 
 export const uploadUserPhoto = async (req, res) => {
@@ -220,6 +278,80 @@ export const uploadUserPhoto = async (req, res) => {
       photoUrl,
       filePath: uploadData.path,
       user: updatedUser
+    });
+
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({
+      success: false,
+      message: "Server Error"});
+  }
+};
+
+export const changePin = async (req, res) => {
+  try {
+    const { current_pin, new_pin } = req.body;
+
+    if (!current_pin || !new_pin) {
+      return res.status(400).json({
+        success: false,
+        message: "current_pin and new_pin are required"
+      });
+    }
+
+    if (!/^\d{6}$/.test(new_pin)) {
+      return res.status(400).json({
+        success: false,
+        message: "New PIN must be a 6-digit number"
+      });
+    }
+
+    const { data: user, error: fetchError } = await supabase
+      .from("User_Details")
+      .select("id, password")
+      .eq("id", req.user.id)
+      .maybeSingle();
+
+    if (fetchError) {
+      console.error(fetchError);
+      return res.status(500).json({
+        success: false,
+        message: "Error verifying current PIN"});
+    }
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found"
+      });
+    }
+
+    const isMatch = await bcrypt.compare(current_pin, user.password);
+
+    if (!isMatch) {
+      return res.status(401).json({
+        success: false,
+        message: "Current PIN is incorrect"
+      });
+    }
+
+    const hashedPin = await bcrypt.hash(new_pin, 10);
+
+    const { error: updateError } = await supabase
+      .from("User_Details")
+      .update({ password: hashedPin })
+      .eq("id", req.user.id);
+
+    if (updateError) {
+      console.error(updateError);
+      return res.status(500).json({
+        success: false,
+        message: "Error updating PIN"});
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "PIN changed successfully"
     });
 
   } catch (err) {
