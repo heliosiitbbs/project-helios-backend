@@ -47,7 +47,7 @@ export const getMyTimetable = async (req, res) => {
 
     // Step 2: subjects this student registered for in their current semester
     const { data: registrations, error: regError } = await supabase
-      .from("Subject_Regestrations")
+      .from("Subject_Registrations")
       .select("*")
       .eq("student_id", rollNumber)
       .eq("semester", currentSemester);
