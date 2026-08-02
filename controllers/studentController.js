@@ -903,19 +903,62 @@ export const invalidateStudentByRollNumber = async (req, res) => {
 // STUDENT CREDENTIALS MANAGEMENT CONTROLLER FUNCTIONS
 // ========================================================
 
+const HOSTEL_NAME_MAP = {
+    "BHR": "Brahmaputra Hall",
+    "GHR": "Ganga Hall",
+    "MHR": "Mahanadi Hall",
+    "SHR": "Subarnarekha Hall",
+    "KHR": "Kangsabati Hall"
+};
+
+function getHostelNameFormatted(code) {
+    if (!code) return "";
+    const upper = String(code).trim().toUpperCase();
+    return HOSTEL_NAME_MAP[upper] || code;
+}
+
 function formatStudentRow(row) {
     const user = row.User_Details || {};
+    const hostelCode = row.Hostel_Details || "";
+    const hostelFullName = getHostelNameFormatted(hostelCode);
+
     return {
+        // User & Account details
         user_id: user.id || row.User_code || null,
         name: user["User Name"] || null,
         email: user.email_id || null,
         phone_number: user.phone_number || null,
         photo: user.photoUrl || null,
         is_valid: user.is_Valid !== undefined ? user.is_Valid : null,
+
+        // Roll Number aliases
         roll_number: row["Roll Number"] || null,
-        hostel: row.Hostel_Details || null,
+        "Roll Number": row["Roll Number"] || null,
+        rollNumber: row["Roll Number"] || null,
+        student_id: row["Roll Number"] || null,
+        "Student ID": row["Roll Number"] || null,
+
+        // Hostel aliases (returns both code and full name so frontend maps correctly)
+        hostel: hostelCode,
+        hostel_code: hostelCode,
+        hostel_name: hostelFullName,
+        Hostel_Details: hostelCode,
+        "Hostel Details": hostelCode,
+        Hostel: hostelCode,
+        Hostel_Name: hostelFullName,
+        "Hostel Name": hostelFullName,
+
+        // Room No aliases
         room_number: row["Room No"] || null,
+        room_no: row["Room No"] || null,
+        "Room No": row["Room No"] || null,
+        "Room Number": row["Room No"] || null,
+
+        // Faculty Adviser aliases
         faculty_adviser: row["Faculty Adviser"] || null,
+        "Faculty Adviser": row["Faculty Adviser"] || null,
+
+        // Semester & Timestamp
         current_semester: row.current_semester !== undefined ? row.current_semester : null,
         created_at: row.created_at || null
     };
