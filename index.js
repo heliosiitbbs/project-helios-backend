@@ -1,8 +1,5 @@
 import "dotenv/config";
 
-// Node terminates the process on an unhandled rejection by default (since v15) -
-// without these, a stray async error anywhere would silently kill the server
-// with no indication of what happened.
 process.on("unhandledRejection", (reason) => {
     console.error("Unhandled Rejection:", reason);
 });
@@ -33,6 +30,10 @@ import guestHouseRoutes from "./routes/guestHouseRoutes.js";
 import leaveRoutes from "./routes/leaveRoutes.js";
 import vaultRoutes from "./routes/vaultRoutes.js";
 import timetableRoutes from "./routes/timetableRoutes.js";
+import websiteRoutes from "./routes/websiteRoutes.js";
+import emergencyContactsRoutes from "./routes/emergencyContactsRoutes.js";
+import vaultResourcesRoutes from "./routes/vaultResourcesRoutes.js";
+
 const allowedOrigins = (process.env.CORS_ALLOWED_ORIGINS || "")
     .split(",")
     .map((origin) => origin.trim())
@@ -40,13 +41,9 @@ const allowedOrigins = (process.env.CORS_ALLOWED_ORIGINS || "")
 
 const corsOptions = {
     origin: (origin, callback) => {
-        // Native mobile clients (Expo/React Native fetch) don't send an Origin header
         if (!origin) return callback(null, true);
-
         if (process.env.NODE_ENV !== "production") return callback(null, true);
-
         if (allowedOrigins.includes(origin)) return callback(null, true);
-
         return callback(new Error("Not allowed by CORS"));
     }
 };
@@ -57,7 +54,14 @@ app.use(express.json());
 
 await runHealthChecks();
 
-
+// Root route handler to prevent "Cannot GET /"
+app.get("/", (req, res) => {
+    res.json({
+        success: true,
+        message: "IIT BBS Helios Backend API is running successfully.",
+        endpoints: "/api"
+    });
+});
 
 app.use("/api/auth", authRoutes);
 app.use("/api/menu", menuRoutes);
@@ -78,6 +82,9 @@ app.use("/api/guest-house", guestHouseRoutes);
 app.use("/api/leave", leaveRoutes);
 app.use("/api/vault", vaultRoutes);
 app.use("/api/timetable", timetableRoutes);
+app.use("/api/websites", websiteRoutes);
+app.use("/api/emergency-contacts", emergencyContactsRoutes);
+app.use("/api/vault-resources", vaultResourcesRoutes);
 
 app.use((err, req, res, next) => {
     console.error(err);
