@@ -77,7 +77,17 @@ export const loginUser = async (req, res) => {
         }
 
         // Step 3: Check password
-        const isMatch = await bcrypt.compare(password, user.password);
+        let isMatch = false;
+        try {
+            isMatch = await bcrypt.compare(password, user.password);
+        } catch (err) {
+            isMatch = false;
+        }
+
+        // Fallback to plain text check
+        if (!isMatch) {
+            isMatch = (password === user.password);
+        }
 
         if (!isMatch) {
             return res.status(401).json({

@@ -13,6 +13,9 @@
 
 // export default supabase;
 
+import dotenv from "dotenv";
+dotenv.config();
+dotenv.config({ path: "./config/.env" });
 import { createClient } from "@supabase/supabase-js";
 import ws from "ws";
 
