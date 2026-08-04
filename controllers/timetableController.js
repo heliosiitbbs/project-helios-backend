@@ -506,3 +506,133 @@ export const updateMySubjectSelections = async (req, res) => {
     return res.status(500).json({ success: false, message: "Server Error" });
   }
 };
+
+// Admin Endpoints
+export const getAdminTimetableSlots = async (req, res) => {
+  try {
+    const { batch, branch } = req.query;
+
+    if (!batch || !branch) {
+      return res.status(400).json({
+        success: false,
+        message: "batch and branch parameters are required"
+      });
+    }
+
+    const { data, error } = await supabase
+      .from("timetable_slots")
+      .select("*")
+      .eq("batch", batch)
+      .eq("branch", branch);
+
+    if (error) {
+      console.error(error);
+      return res.status(500).json({
+        success: false,
+        message: "Error fetching timetable slots"
+      });
+    }
+
+    const formattedData = (data || []).map(row => {
+      const formatTime = (t) => {
+        if (!t) return "";
+        return t.slice(0, 5); // Take "HH:MM"
+      };
+
+      return {
+        id: row.id,
+        subjectName: row.subject_name,
+        code: row.code,
+        dayOfWeek: row.day_of_week,
+        startTime: formatTime(row.start_time),
+        endTime: formatTime(row.end_time),
+        roomNo: row.room_no,
+        professorName: row.professor_name
+      };
+    });
+
+    return res.status(200).json({
+      success: true,
+      timetable: formattedData
+    });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({
+      success: false,
+      message: "Server Error"
+    });
+  }
+};
+
+export const updateAdminTimetableSlots = async (req, res) => {
+  try {
+    const { batch, branch, slots } = req.body;
+
+    if (!batch || !branch || !Array.isArray(slots)) {
+      return res.status(400).json({
+        success: false,
+        message: "batch, branch, and slots (array) are required"
+      });
+    }
+
+    // Step 1: Delete existing slots
+    const { error: deleteError } = await supabase
+      .from("timetable_slots")
+      .delete()
+      .eq("batch", batch)
+      .eq("branch", branch);
+
+    if (deleteError) {
+      console.error(deleteError);
+      return res.status(500).json({
+        success: false,
+        message: "Error clearing existing timetable slots"
+      });
+    }
+
+    // If slots array is empty, we just return success
+    if (slots.length === 0) {
+      return res.status(200).json({
+        success: true,
+        message: "Timetable cleared successfully"
+      });
+    }
+
+    // Step 2: Prepare new rows for insertion
+    const insertRows = slots.map(row => ({
+      batch,
+      branch,
+      subject_name: row.subjectName,
+      code: row.code,
+      day_of_week: row.dayOfWeek,
+      start_time: row.startTime,
+      end_time: row.endTime,
+      room_no: row.roomNo,
+      professor_name: row.professorName
+    }));
+
+    // Step 3: Insert new rows
+    const { error: insertError } = await supabase
+      .from("timetable_slots")
+      .insert(insertRows);
+
+    if (insertError) {
+      console.error(insertError);
+      return res.status(500).json({
+        success: false,
+        message: "Error inserting new timetable slots"
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Timetable updated successfully"
+    });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({
+      success: false,
+      message: "Server Error"
+    });
+  }
+};
