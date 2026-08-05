@@ -221,6 +221,13 @@ export const sendAuthVerification = async (req, res) => {
                 user: process.env.SMTP_USER,
                 pass: process.env.SMTP_PASS ? process.env.SMTP_PASS.replace(/\s+/g, "") : "",
             },
+            // Some hosts (e.g. Render's standard web services) silently drop
+            // outbound SMTP-port traffic instead of refusing it, so without a
+            // bound this hangs on nodemailer's ~2 minute default instead of
+            // failing fast.
+            connectionTimeout: 8000,
+            greetingTimeout: 8000,
+            socketTimeout: 8000,
         });
 
         // Fire-and-forget: don't make the client wait on the SMTP round trip

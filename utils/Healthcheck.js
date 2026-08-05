@@ -51,6 +51,13 @@ export async function checkSmtpConnection() {
         user: process.env.SMTP_USER,
         pass: process.env.SMTP_PASS.replace(/\s+/g, ""),
       },
+      // This check is awaited before the server starts listening (see
+      // runHealthChecks below) - without a bound, a host that silently
+      // drops outbound SMTP traffic (e.g. Render's standard web services)
+      // would hang server startup itself, not just one request.
+      connectionTimeout: 8000,
+      greetingTimeout: 8000,
+      socketTimeout: 8000,
     });
 
     await transporter.verify();
