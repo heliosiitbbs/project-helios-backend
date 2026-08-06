@@ -709,9 +709,21 @@ export const sendHandoverOTP = async (req, res) => {
         user: process.env.SMTP_USER,
         pass: process.env.SMTP_PASS ? process.env.SMTP_PASS.replace(/\s+/g, "") : "",
       },
+      // Some hosts (e.g. Render's standard web services) silently drop
+      // outbound SMTP-port traffic instead of refusing it, so without a
+      // bound this hangs on nodemailer's ~2 minute default instead of
+      // failing fast.
+      connectionTimeout: 8000,
+      greetingTimeout: 8000,
+      socketTimeout: 8000,
     });
 
-    await transporter.sendMail({
+    // Fire-and-forget, same as sendAuthVerification: the code is already
+    // saved to Redis and logged above, so don't make the client's request
+    // hang on the SMTP round trip - a blocked/slow mail server would
+    // otherwise stall the response until the platform's own gateway timeout
+    // kills it and returns a raw 502 instead of a real error.
+    transporter.sendMail({
       from: `"Helios Lost & Found" <${process.env.SMTP_USER || "no-reply@helios.iitbbs.ac.in"}>`,
       to: email,
       subject: "Confirm Handover of Your Lost Item - Helios IIT BBS",
