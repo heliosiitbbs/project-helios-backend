@@ -3,16 +3,7 @@ import jwt from "jsonwebtoken";
 import supabase from "../config/Supabase.js";
 import redis from "../config/redis.js";
 import nodemailer from "nodemailer";
-import { OAuth2Client } from "google-auth-library";
-
-// Accepts whichever of the Android/iOS/Web client IDs are configured, since
-// the same backend verifies sign-ins coming from any platform build.
-const GOOGLE_CLIENT_IDS = (process.env.GOOGLE_OAUTH_CLIENT_IDS || "")
-  .split(",")
-  .map((id) => id.trim())
-  .filter(Boolean);
-
-const googleClient = new OAuth2Client();
+import firebaseAuth from "../config/Firebase.js";
 
 // 1. UPDATE PASSWORD
 export const updateInitialPassword = async (req, res) => {
@@ -213,8 +204,8 @@ export const verifyGoogleSignIn = async (req, res) => {
         });
     }
 
-    if (GOOGLE_CLIENT_IDS.length === 0) {
-        console.error("GOOGLE_OAUTH_CLIENT_IDS is not configured");
+    if (!firebaseAuth) {
+        console.error("FIREBASE_SERVICE_ACCOUNT_JSON is not configured");
         return res.status(500).json({
             success: false,
             message: "Google sign-in is not configured on the server"
@@ -222,20 +213,16 @@ export const verifyGoogleSignIn = async (req, res) => {
     }
 
     try {
-        const ticket = await googleClient.verifyIdToken({
-            idToken,
-            audience: GOOGLE_CLIENT_IDS
-        });
-        const payload = ticket.getPayload();
+        const decoded = await firebaseAuth.verifyIdToken(idToken);
 
-        if (!payload || !payload.email || !payload.email_verified) {
+        if (!decoded || !decoded.email || !decoded.email_verified) {
             return res.status(401).json({
                 success: false,
                 message: "Could not verify a confirmed email from this Google account"
             });
         }
 
-        const email_id = payload.email.trim().toLowerCase();
+        const email_id = decoded.email.trim().toLowerCase();
 
         const { data: user, error } = await supabase
             .from("User_Details")
