@@ -5,7 +5,9 @@ import {
   updateMySubjectSelections,
   getAllHolidays,
   addHoliday,
-  deleteHoliday
+  deleteHoliday,
+  getAdminTimetableSlots,
+  updateAdminTimetableSlots
 } from "../controllers/timetableController.js";
 import { protect, authorize } from "../middlewares/authMiddleware.js";
 
@@ -19,5 +21,7 @@ const holidayAdminRoles = authorize("Admin", "Super Admin", "Time Table Admin");
 router.get("/holidays", protect, holidayAdminRoles, getAllHolidays);
 router.post("/holidays", protect, holidayAdminRoles, addHoliday);
 router.delete("/holidays/:id", protect, holidayAdminRoles, deleteHoliday);
-
+// Admin slots routes (public to support login-less frontend)
+router.get("/slots", getAdminTimetableSlots);
+router.post("/slots", updateAdminTimetableSlots);
 export default router;
