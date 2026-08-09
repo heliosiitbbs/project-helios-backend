@@ -756,3 +756,108 @@ export const sendHandoverOTP = async (req, res) => {
     });
   }
 };
+
+// =======================
+// FUNCTION 5
+// RESOLVE VIA QR SCAN
+// The finder scans the claiming student's personal QR code (which encodes
+// their email) instead of the roll-number + email-OTP round trip above.
+// =======================
+export const resolveViaQr = async (req, res) => {
+  const { item_id, given_person_email } = req.body;
+
+  if (!item_id || !given_person_email) {
+    return res.status(400).json({
+      success: false,
+      message: "item_id and given_person_email are required"
+    });
+  }
+
+  const cleanEmail = given_person_email.trim().toLowerCase();
+  const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailPattern.test(cleanEmail)) {
+    return res.status(400).json({
+      success: false,
+      message: "Scanned QR code does not contain a valid email address"
+    });
+  }
+
+  try {
+    const { data: existingItem, error: fetchError } = await supabase
+      .from("lost_and_found_details")
+      .select("Person_id")
+      .eq("id", item_id)
+      .maybeSingle();
+
+    if (fetchError) {
+      console.error(fetchError);
+      return res.status(500).json({
+        success: false,
+        message: "Error fetching item"
+      });
+    }
+
+    if (!existingItem) {
+      return res.status(404).json({
+        success: false,
+        message: "Item not found"
+      });
+    }
+
+    if (existingItem.Person_id !== req.user.e_mail) {
+      return res.status(403).json({
+        success: false,
+        message: "Only the person who reported this item can mark it resolved"
+      });
+    }
+
+    const { data: registeredUser } = await supabase
+      .from("User_Details")
+      .select("email_id")
+      .eq("email_id", cleanEmail)
+      .maybeSingle();
+
+    if (!registeredUser) {
+      return res.status(404).json({
+        success: false,
+        message: "This QR code's email is not a registered Helios user"
+      });
+    }
+
+    const { data, error } = await supabase
+      .from("lost_and_found_details")
+      .update({
+        is_resolved: true,
+        given_person_id: cleanEmail
+      })
+      .eq("id", item_id)
+      .select();
+
+    if (error) {
+      console.error(error);
+      return res.status(500).json({
+        success: false,
+        message: "Error resolving item"
+      });
+    }
+
+    if (!data.length) {
+      return res.status(404).json({
+        success: false,
+        message: "Item not found"
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Item resolved successfully",
+      data: data[0]
+    });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({
+      success: false,
+      message: "Server Error"
+    });
+  }
+};

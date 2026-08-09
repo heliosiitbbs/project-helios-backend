@@ -9,7 +9,8 @@ import {
 reportLostItem,
 getLostItems,
 reportResolved,
-sendHandoverOTP
+sendHandoverOTP,
+resolveViaQr
 }
 from "../controllers/lostFoundController.js";
 
@@ -39,6 +40,12 @@ router.post(
 "/report-resolved",
 protect,
 reportResolved
+);
+
+router.post(
+"/resolve-via-qr",
+protect,
+resolveViaQr
 );
 
 export default router;
