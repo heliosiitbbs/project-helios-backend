@@ -4,6 +4,7 @@ import {
     loginUser,
     updateInitialPassword,
     checkAccountStatus,
+    verifyGoogleSignIn,
     sendAuthVerification,
     verifyAuthCode,
     registerOrUpdateUserPin
@@ -24,6 +25,11 @@ router.post(
 router.post(
     "/check-account",
     checkAccountStatus
+);
+
+router.post(
+    "/google-verify",
+    verifyGoogleSignIn
 );
 
 router.post(

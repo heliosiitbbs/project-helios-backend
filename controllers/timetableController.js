@@ -168,6 +168,23 @@ export const getMyTimetable = async (req, res) => {
 
     const currentSemester = studentRow.current_semester;
 
+    // The timetable itself is a recurring weekly schedule with no dates, so
+    // calendar-specific off days (declared holidays, not just Sat/Sun) are
+    // handed back separately for the frontend to check actual dates against.
+    // Fetched up front so it's included on every response path below, even
+    // when the student has no registered subjects yet.
+    const { data: holidays, error: holidaysError } = await supabase
+      .from("Holiday_List")
+      .select("occasion, start_date, end_date");
+
+    if (holidaysError) {
+      console.error(holidaysError);
+      return res.status(500).json({
+        success: false,
+        message: "Error fetching holiday list"
+      });
+    }
+
     // Step 2: subjects this student registered for in their current semester
     const { data: registrations, error: regError } = await supabase
       .from("Subject_Registrations")
@@ -189,7 +206,8 @@ export const getMyTimetable = async (req, res) => {
       return res.status(200).json({
         success: true,
         semester: currentSemester,
-        timetable: []
+        timetable: [],
+        holidays: holidays || []
       });
     }
 
@@ -241,7 +259,8 @@ export const getMyTimetable = async (req, res) => {
     return res.status(200).json({
       success: true,
       semester: currentSemester,
-      timetable
+      timetable,
+      holidays: holidays || []
     });
   } catch (err) {
     console.error(err);
@@ -501,6 +520,103 @@ export const updateMySubjectSelections = async (req, res) => {
       success: true,
       message: "Subject selections updated successfully"
     });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ success: false, message: "Server Error" });
+  }
+};
+
+const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
+
+// Admin: list every declared holiday (Time Table Admin manages this list).
+export const getAllHolidays = async (req, res) => {
+  try {
+    const { data: holidays, error } = await supabase
+      .from("Holiday_List")
+      .select("*")
+      .order("start_date");
+
+    if (error) {
+      console.error(error);
+      return res.status(500).json({ success: false, message: "Error fetching holiday list" });
+    }
+
+    return res.status(200).json({ success: true, holidays: holidays || [] });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ success: false, message: "Server Error" });
+  }
+};
+
+// Admin: add a holiday (or holiday range) to Holiday_List.
+export const addHoliday = async (req, res) => {
+  try {
+    const { occasion, start_date, end_date } = req.body;
+
+    if (!occasion || !occasion.trim() || !start_date || !end_date) {
+      return res.status(400).json({
+        success: false,
+        message: "occasion, start_date and end_date are required"
+      });
+    }
+
+    if (!DATE_REGEX.test(start_date) || !DATE_REGEX.test(end_date)) {
+      return res.status(400).json({
+        success: false,
+        message: "start_date and end_date must be in YYYY-MM-DD format"
+      });
+    }
+
+    if (end_date < start_date) {
+      return res.status(400).json({
+        success: false,
+        message: "end_date cannot be before start_date"
+      });
+    }
+
+    const { data: holiday, error } = await supabase
+      .from("Holiday_List")
+      .insert([{ occasion: occasion.trim(), start_date, end_date }])
+      .select()
+      .single();
+
+    if (error) {
+      console.error(error);
+      return res.status(500).json({ success: false, message: "Error adding holiday" });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Holiday added successfully",
+      holiday
+    });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ success: false, message: "Server Error" });
+  }
+};
+
+// Admin: remove a holiday by id.
+export const deleteHoliday = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const { data: deleted, error } = await supabase
+      .from("Holiday_List")
+      .delete()
+      .eq("id", id)
+      .select();
+
+    if (error) {
+      console.error(error);
+      return res.status(500).json({ success: false, message: "Error deleting holiday" });
+    }
+
+    if (!deleted || deleted.length === 0) {
+      return res.status(404).json({ success: false, message: "Holiday not found" });
+    }
+
+    return res.status(200).json({ success: true, message: "Holiday deleted successfully" });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ success: false, message: "Server Error" });

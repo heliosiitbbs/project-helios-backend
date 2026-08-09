@@ -3,6 +3,16 @@ import jwt from "jsonwebtoken";
 import supabase from "../config/Supabase.js";
 import redis from "../config/redis.js";
 import nodemailer from "nodemailer";
+import { OAuth2Client } from "google-auth-library";
+
+// Accepts whichever of the Android/iOS/Web client IDs are configured, since
+// the same backend verifies sign-ins coming from any platform build.
+const GOOGLE_CLIENT_IDS = (process.env.GOOGLE_OAUTH_CLIENT_IDS || "")
+  .split(",")
+  .map((id) => id.trim())
+  .filter(Boolean);
+
+const googleClient = new OAuth2Client();
 
 // 1. UPDATE PASSWORD
 export const updateInitialPassword = async (req, res) => {
@@ -166,21 +176,99 @@ export const checkAccountStatus = async (req, res) => {
     const email_id = rawEmail.trim().toLowerCase();
 
     try {
+        // is_Valid means "allowed to use the app" (an account-enablement flag),
+        // not "has a password" - e.g. bulk-uploaded students are is_Valid:true
+        // from the moment they're added, well before they ever set a PIN.
+        // Whether a password/PIN actually exists is exactly what the password
+        // column tells us.
         const { data: user } = await supabase
             .from("User_Details")
-            .select("is_Valid")
+            .select("password")
             .eq("email_id", email_id)
             .maybeSingle();
 
         res.json({
             success: true,
-            hasPin: !!(user && user.is_Valid)
+            hasPin: !!(user && user.password)
         });
 
     } catch (err) {
         res.status(500).json({
             success: false,
             message: "Server Error"
+        });
+    }
+};
+
+// 3B. VERIFY GOOGLE SIGN-IN (replaces the email-OTP step: Google itself
+// vouches for the email, so this just checks the account is one an admin
+// has actually provisioned, then hands back the same hasPin signal
+// checkAccountStatus does so the frontend can branch to PIN entry vs setup).
+export const verifyGoogleSignIn = async (req, res) => {
+    const { id_token: idToken } = req.body || {};
+    if (!idToken) {
+        return res.status(400).json({
+            success: false,
+            message: "id_token is required"
+        });
+    }
+
+    if (GOOGLE_CLIENT_IDS.length === 0) {
+        console.error("GOOGLE_OAUTH_CLIENT_IDS is not configured");
+        return res.status(500).json({
+            success: false,
+            message: "Google sign-in is not configured on the server"
+        });
+    }
+
+    try {
+        const ticket = await googleClient.verifyIdToken({
+            idToken,
+            audience: GOOGLE_CLIENT_IDS
+        });
+        const payload = ticket.getPayload();
+
+        if (!payload || !payload.email || !payload.email_verified) {
+            return res.status(401).json({
+                success: false,
+                message: "Could not verify a confirmed email from this Google account"
+            });
+        }
+
+        const email_id = payload.email.trim().toLowerCase();
+
+        const { data: user, error } = await supabase
+            .from("User_Details")
+            .select("password")
+            .eq("email_id", email_id)
+            .maybeSingle();
+
+        if (error) {
+            console.error(error);
+            return res.status(500).json({
+                success: false,
+                message: "Error checking account eligibility"
+            });
+        }
+
+        if (!user) {
+            return res.status(403).json({
+                success: false,
+                message: "This email is not registered for Helios. Contact your department administrator."
+            });
+        }
+
+        return res.json({
+            success: true,
+            email_id,
+            hasPin: !!user.password
+        });
+
+    } catch (err) {
+        console.error("Google token verification failed:", err.message);
+        return res.status(401).json({
+            success: false,
+            message: "Could not verify Google sign-in"
         });
     }
 };
