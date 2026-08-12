@@ -132,6 +132,42 @@ export const addBusSchedule = async (req, res) => {
 };
 
 // =====================================
+// GET EXTERNAL TRANSPORT CONTACTS (E-VEHICLES / AUTOS)
+// =====================================
+
+export const getExternalTransportContacts = async (req, res) => {
+    try {
+        const { type } = req.query; // 'ev' | 'auto' | omitted for all
+
+        let query = supabase
+            .from("external_transport")
+            .select("*")
+            .order("id", { ascending: true });
+
+        if (type === "ev") {
+            query = query.ilike("Transport_type", "EV Drive%");
+        } else if (type === "auto") {
+            query = query.ilike("Transport_type", "Auto%");
+        }
+
+        const { data, error } = await query;
+
+        if (error) throw error;
+
+        return res.status(200).json({
+            success: true,
+            contacts: data
+        });
+
+    } catch (err) {
+        console.error(err);
+        return res.status(500).json({
+            success: false,
+            message: "Server Error"});
+    }
+};
+
+// =====================================
 // GET ALL SCHEDULES (ADMIN ONLY)
 // =====================================
 

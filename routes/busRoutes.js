@@ -3,7 +3,8 @@ import express from "express";
 import {
     getBusSchedule,
     addBusSchedule,
-    getAllBusSchedules
+    getAllBusSchedules,
+    getExternalTransportContacts
 } from "../controllers/busController.js";
 import { protect, authorize } from "../middlewares/authMiddleware.js";
 
@@ -27,6 +28,12 @@ router.get(
     protect,
     authorize('Admin'),
     getAllBusSchedules
+);
+
+router.get(
+    "/external-transport",
+    protect,
+    getExternalTransportContacts
 );
 
 export default router;
