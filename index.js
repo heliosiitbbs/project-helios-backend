@@ -33,6 +33,7 @@ import timetableRoutes from "./routes/timetableRoutes.js";
 import websiteRoutes from "./routes/websiteRoutes.js";
 import emergencyContactsRoutes from "./routes/emergencyContactsRoutes.js";
 import vaultResourcesRoutes from "./routes/vaultResourcesRoutes.js";
+import paperRoutes from "./routes/paperRoutes.js";
 
 const allowedOrigins = (process.env.CORS_ALLOWED_ORIGINS || "")
     .split(",")
@@ -85,6 +86,7 @@ app.use("/api/timetable", timetableRoutes);
 app.use("/api/websites", websiteRoutes);
 app.use("/api/emergency-contacts", emergencyContactsRoutes);
 app.use("/api/vault-resources", vaultResourcesRoutes);
+app.use("/api/papers", paperRoutes);
 
 app.use((err, req, res, next) => {
     console.error(err);
