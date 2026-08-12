@@ -1,6 +1,7 @@
 import supabase from "../config/Supabase.js";
 import redis from "../config/redis.js";
 import nodemailer from "nodemailer";
+import { sendPushToEmail } from "../utils/pushNotifications.js";
 
 
 
@@ -631,6 +632,13 @@ message:"Item not found"
 
 }
 
+sendPushToEmail(ownerEmail, {
+type: "lost_found",
+title: "Item Handed Over",
+body: data[0].Description ? `"${data[0].Description}" has been confirmed handed over to you.` : "An item has been confirmed handed over to you.",
+data: { screen: "LostFoundHome" }
+}).catch((err) => console.error("Failed to send lost & found push", err));
+
 
 
 
@@ -847,6 +855,13 @@ export const resolveViaQr = async (req, res) => {
         message: "Item not found"
       });
     }
+
+    sendPushToEmail(cleanEmail, {
+      type: "lost_found",
+      title: "Item Handed Over",
+      body: data[0].Description ? `"${data[0].Description}" has been confirmed handed over to you.` : "An item has been confirmed handed over to you.",
+      data: { screen: "LostFoundHome" }
+    }).catch((err) => console.error("Failed to send lost & found push", err));
 
     return res.status(200).json({
       success: true,

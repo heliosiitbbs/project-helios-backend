@@ -1,4 +1,5 @@
 import supabase from "../config/Supabase.js";
+import { sendPushToRollNumber } from "../utils/pushNotifications.js";
 
 // 1. GET ALL UNRESOLVED GRIEVANCES
 export const getUnresolvedGrievances = async (req, res) => {
@@ -139,6 +140,13 @@ export const markResolved = async (req, res) => {
 
         if (error) throw error;
         if (!data) return res.status(404).json({ success: false, message: "Grievance record not found." });
+
+        sendPushToRollNumber(data.student_id, {
+            type: "grievance",
+            title: "Grievance Resolved",
+            body: data.description ? `"${data.description.slice(0, 80)}" has been resolved.` : "Your grievance has been resolved.",
+            data: { screen: "GrievanceHome" }
+        }).catch((err) => console.error("Failed to send grievance push", err));
 
         return res.status(200).json({ success: true, message: "Grievance marked as resolved.", grievance: data });
     } catch (err) {

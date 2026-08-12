@@ -1,4 +1,5 @@
 import supabase from "../config/Supabase.js";
+import { sendPushToAll } from "../utils/pushNotifications.js";
 
 // Get all news posts
 export const getNews = async (req, res) => {
@@ -67,6 +68,15 @@ export const createNews = async (req, res) => {
       });
     }
 
+    if (data.status === "published") {
+      sendPushToAll({
+        type: "news",
+        title: "Campus News",
+        body: data.title,
+        data: { screen: "CampusNews" }
+      }).catch((err) => console.error("Failed to send news push", err));
+    }
+
     return res.status(201).json({
       success: true,
       message: "News post created successfully",
@@ -126,6 +136,18 @@ export const updateNews = async (req, res) => {
     if (writer_profile_photo !== undefined) updateData.writer_profile_photo = writer_profile_photo;
     if (status !== undefined) updateData.status = status;
 
+    // Only broadcast when a post actually transitions into "published" here,
+    // not on every edit to an already-published post.
+    let wasPublished = false;
+    if (status === "published") {
+      const { data: existing } = await supabase
+        .from("campus_news")
+        .select("status")
+        .eq("id", id)
+        .maybeSingle();
+      wasPublished = existing?.status === "published";
+    }
+
     const { data, error } = await supabase
       .from("campus_news")
       .update(updateData)
@@ -138,6 +160,15 @@ export const updateNews = async (req, res) => {
         success: false,
         message: "Error updating news post"
       });
+    }
+
+    if (status === "published" && !wasPublished && data?.[0]) {
+      sendPushToAll({
+        type: "news",
+        title: "Campus News",
+        body: data[0].title,
+        data: { screen: "CampusNews" }
+      }).catch((err) => console.error("Failed to send news push", err));
     }
 
     return res.status(200).json({
