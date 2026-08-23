@@ -1515,4 +1515,65 @@ export const exportStudents = async (req, res) => {
     }
 };
 
+export const getStudents = async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from("Student_Details")
+      .select(`
+        "Roll Number",
+        Hostel_Details,
+        "Room No",
+        "Faculty Adviser",
+        User_code,
+        User_Details (
+          "User Name",
+          email_id,
+          is_Valid
+        )
+      `);
+
+    if (error) throw error;
+
+    const formatted = data.map((item) => ({
+      roll_number: item["Roll Number"],
+      name: item.User_Details?.["User Name"] || "Student User",
+      email: item.User_Details?.email_id || "",
+      hostel: item.Hostel_Details || "Subarnarekha Hall",
+      room_number: item["Room No"] || "101-A",
+      faculty_adviser: item["Faculty Adviser"] || "Dr. S. Mohanty",
+      is_Valid: item.User_Details?.is_Valid ?? true
+    }));
+
+    return res.status(200).json(formatted);
+  } catch (err) {
+    console.error("GET STUDENTS ERROR:", err);
+    return res.status(500).json({ success: false, message: "Server error" });
+  }
+};
+
+export const updateStudentByRollNumber = async (req, res) => {
+  try {
+    const { rollNumber } = req.params;
+    const { hostel, room, adviser } = req.body;
+
+    const { data: student, error: studentError } = await supabase
+      .from("Student_Details")
+      .update({
+        Hostel_Details: hostel,
+        "Room No": room,
+        "Faculty Adviser": adviser
+      })
+      .eq("Roll Number", rollNumber)
+      .select()
+      .maybeSingle();
+
+    if (studentError) throw studentError;
+
+    return res.status(200).json({ success: true, student });
+  } catch (err) {
+    console.error("UPDATE STUDENT ERROR:", err);
+    return res.status(500).json({ success: false, message: "Server error" });
+  }
+};
+
 

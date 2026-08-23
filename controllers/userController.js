@@ -361,3 +361,20 @@ export const changePin = async (req, res) => {
       message: "Server Error"});
   }
 };
+
+export const getAdmins = async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from("User_Details")
+      .select("*")
+      .neq("User Type", "Student")
+      .order("id", { ascending: true });
+
+    if (error) throw error;
+
+    return res.status(200).json({ success: true, admins: data });
+  } catch (err) {
+    console.error("GET ADMINS ERROR:", err);
+    return res.status(500).json({ success: false, message: "Server Error" });
+  }
+};

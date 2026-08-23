@@ -489,3 +489,87 @@ export const searchUsers = async (req, res) => {
         return res.status(500).json({ success: false, message: "Error searching users." });
     }
 };
+
+export const createResource = async (req, res) => {
+    try {
+        const { resource_type, name, image_url, location, total_count, max_amount_per_request, allowed_time_to_keep_hours, min_users, slot_duration_minutes } = req.body;
+
+        const { data, error } = await supabase
+            .from("vault_resources")
+            .insert([
+                {
+                    resource_type,
+                    name,
+                    image_url,
+                    location,
+                    total_count: total_count ? Number(total_count) : null,
+                    available_count: total_count ? Number(total_count) : null,
+                    damaged_count: 0,
+                    max_amount_per_request: max_amount_per_request ? Number(max_amount_per_request) : null,
+                    allowed_time_to_keep_hours: allowed_time_to_keep_hours ? Number(allowed_time_to_keep_hours) : null,
+                    min_users: min_users ? Number(min_users) : null,
+                    slot_duration_minutes: slot_duration_minutes ? Number(slot_duration_minutes) : null
+                }
+            ])
+            .select()
+            .single();
+
+        if (error) throw error;
+
+        return res.status(201).json({ success: true, resource: data });
+    } catch (err) {
+        console.error("CREATE VAULT RESOURCE ERROR:", err);
+        return res.status(500).json({ success: false, message: "Error creating vault resource." });
+    }
+};
+
+export const updateResource = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { name, image_url, location, total_count, available_count, damaged_count, max_amount_per_request, allowed_time_to_keep_hours, min_users, slot_duration_minutes } = req.body;
+
+        const updateData = {};
+        if (name !== undefined) updateData.name = name;
+        if (image_url !== undefined) updateData.image_url = image_url;
+        if (location !== undefined) updateData.location = location;
+        if (total_count !== undefined) updateData.total_count = Number(total_count);
+        if (available_count !== undefined) updateData.available_count = Number(available_count);
+        if (damaged_count !== undefined) updateData.damaged_count = Number(damaged_count);
+        if (max_amount_per_request !== undefined) updateData.max_amount_per_request = Number(max_amount_per_request);
+        if (allowed_time_to_keep_hours !== undefined) updateData.allowed_time_to_keep_hours = Number(allowed_time_to_keep_hours);
+        if (min_users !== undefined) updateData.min_users = Number(min_users);
+        if (slot_duration_minutes !== undefined) updateData.slot_duration_minutes = Number(slot_duration_minutes);
+
+        const { data, error } = await supabase
+            .from("vault_resources")
+            .update(updateData)
+            .eq("resource_id", id)
+            .select()
+            .maybeSingle();
+
+        if (error) throw error;
+
+        return res.status(200).json({ success: true, resource: data });
+    } catch (err) {
+        console.error("UPDATE VAULT RESOURCE ERROR:", err);
+        return res.status(500).json({ success: false, message: "Error updating vault resource." });
+    }
+};
+
+export const deleteResource = async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        const { error } = await supabase
+            .from("vault_resources")
+            .delete()
+            .eq("resource_id", id);
+
+        if (error) throw error;
+
+        return res.status(200).json({ success: true, message: "Vault resource deleted successfully." });
+    } catch (err) {
+        console.error("DELETE VAULT RESOURCE ERROR:", err);
+        return res.status(500).json({ success: false, message: "Error deleting vault resource." });
+    }
+};
