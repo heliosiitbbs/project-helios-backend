@@ -18,7 +18,9 @@ import {
     getStudentsByHostel,
     getStudentsBySemester,
     bulkUpdateStudents,
-    exportStudents
+    exportStudents,
+    getStudents,
+    updateStudentByRollNumber
 } from "../controllers/studentController.js";
 import { protect } from "../middlewares/authMiddleware.js";
 

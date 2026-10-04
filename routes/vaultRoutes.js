@@ -10,7 +10,10 @@ import {
     createCourtBooking,
     getMyCourtBookings,
     cancelCourtBooking,
-    searchUsers
+    searchUsers,
+    createResource,
+    updateResource,
+    deleteResource
 } from "../controllers/vaultController.js";
 
 const router = express.Router();
@@ -20,6 +23,10 @@ router.use(protect);
 router.get("/resources", listResources);
 router.get("/resources/:id", getResource);
 router.get("/resources/:id/slots", getAvailableSlots);
+
+router.post("/resources", createResource);
+router.put("/resources/:id", updateResource);
+router.delete("/resources/:id", deleteResource);
 
 router.post("/item-bookings", createItemBooking);
 router.get("/item-bookings/my", getMyItemBookings);

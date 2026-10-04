@@ -155,3 +155,24 @@ export const addWebsite = async (req, res) => {
             message: "Server Error"});
     }
 };
+
+export const deleteWebsite = async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        const { error } = await supabase
+            .from("Redirecting_Websites")
+            .delete()
+            .eq("id", id);
+
+        if (error) throw error;
+
+        // Clear cache
+        await redis.del("redirect-websites:all-websites");
+
+        return res.status(200).json({ success: true, message: "Website deleted successfully" });
+    } catch (err) {
+        console.error("DELETE WEBSITE ERROR:", err);
+        return res.status(500).json({ success: false, message: "Server Error" });
+    }
+};

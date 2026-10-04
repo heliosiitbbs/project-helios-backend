@@ -4,7 +4,7 @@ import { sendPushToAll } from "../utils/pushNotifications.js";
 // Get all news posts
 export const getNews = async (req, res) => {
   try {
-    const { data, error } = await supabase
+    const { data: newsPosts, error } = await supabase
       .from("campus_news")
       .select("*")
       .eq("status", "published")
@@ -18,9 +18,43 @@ export const getNews = async (req, res) => {
       });
     }
 
+    // Fetch likes and comments for mapping
+    const { data: allLikes } = await supabase.from("Post_Likes").select("post_id");
+    const { data: allComments } = await supabase.from("Post_Comments").select("post_id");
+
+    const likesMap = {};
+    const commentsMap = {};
+
+    (allLikes || []).forEach(item => {
+      if (item.post_id) {
+        const pid = item.post_id.toString();
+        likesMap[pid] = (likesMap[pid] || 0) + 1;
+      }
+    });
+
+    (allComments || []).forEach(item => {
+      if (item.post_id) {
+        const pid = item.post_id.toString();
+        commentsMap[pid] = (commentsMap[pid] || 0) + 1;
+      }
+    });
+
+    const newsWithCounts = (newsPosts || []).map(post => {
+      const pid = post.id.toString();
+      const likes = likesMap[pid] || 0;
+      const comments = commentsMap[pid] || 0;
+      const views = (likes * 5) + (comments * 3);
+      return {
+        ...post,
+        likes,
+        comments,
+        views
+      };
+    });
+
     return res.status(200).json({
       success: true,
-      news: data
+      news: newsWithCounts
     });
   } catch (err) {
     console.error(err);
@@ -94,7 +128,7 @@ export const createNews = async (req, res) => {
 // Get all news posts (for admin, including drafts and published)
 export const getAdminNews = async (req, res) => {
   try {
-    const { data, error } = await supabase
+    const { data: newsPosts, error } = await supabase
       .from("campus_news")
       .select("*")
       .order("created_at", { ascending: false });
@@ -107,9 +141,43 @@ export const getAdminNews = async (req, res) => {
       });
     }
 
+    // Fetch likes and comments for mapping
+    const { data: allLikes } = await supabase.from("Post_Likes").select("post_id");
+    const { data: allComments } = await supabase.from("Post_Comments").select("post_id");
+
+    const likesMap = {};
+    const commentsMap = {};
+
+    (allLikes || []).forEach(item => {
+      if (item.post_id) {
+        const pid = item.post_id.toString();
+        likesMap[pid] = (likesMap[pid] || 0) + 1;
+      }
+    });
+
+    (allComments || []).forEach(item => {
+      if (item.post_id) {
+        const pid = item.post_id.toString();
+        commentsMap[pid] = (commentsMap[pid] || 0) + 1;
+      }
+    });
+
+    const newsWithCounts = (newsPosts || []).map(post => {
+      const pid = post.id.toString();
+      const likes = likesMap[pid] || 0;
+      const comments = commentsMap[pid] || 0;
+      const views = (likes * 5) + (comments * 3);
+      return {
+        ...post,
+        likes,
+        comments,
+        views
+      };
+    });
+
     return res.status(200).json({
       success: true,
-      news: data
+      news: newsWithCounts
     });
   } catch (err) {
     console.error(err);

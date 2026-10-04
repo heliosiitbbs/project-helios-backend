@@ -72,10 +72,14 @@ export const getFoodStalls = async (req, res) => {
 // =====================================
 export const createFoodStall = async (req, res) => {
     try {
-        const { stall_name, phone_number, directions } = req.body;
+        const stall_name = req.body.stall_name || req.body.name;
         const location = req.body.location !== undefined ? req.body.location : req.body.Location;
-        const timings = req.body.timings !== undefined ? req.body.timings : req.body.Timings;
-        const photo_url = req.body.photo_url !== undefined ? req.body.photo_url : req.body.Photo_url;
+        const timings = req.body.timings !== undefined ? req.body.timings : (req.body.Timings || req.body.opening_hours);
+        const phone_number = req.body.phone_number !== undefined ? req.body.phone_number : (req.body.phone || req.body.contact_number);
+        const directions = req.body.directions;
+        const photo_url = req.body.photo_url !== undefined ? req.body.photo_url : (req.body.Photo_url || req.body.image || req.body.image_url);
+        const status = req.body.status;
+        const description = req.body.description;
 
         if (!stall_name) {
             return res.status(400).json({
@@ -84,18 +88,19 @@ export const createFoodStall = async (req, res) => {
             });
         }
 
+        const insertData = {};
+        if (stall_name !== undefined) insertData.stall_name = stall_name;
+        if (location !== undefined) insertData.Location = location;
+        if (timings !== undefined) insertData.Timings = timings;
+        if (phone_number !== undefined) insertData.phone_number = phone_number;
+        if (directions !== undefined) insertData.directions = directions;
+        if (photo_url !== undefined) insertData.Photo_url = photo_url;
+        if (status !== undefined) insertData.status = status;
+        if (description !== undefined) insertData.description = description;
+
         const { data, error } = await supabase
             .from("food_stall_details")
-            .insert([
-                {
-                    stall_name,
-                    Location: location,
-                    Timings: timings,
-                    phone_number,
-                    directions,
-                    Photo_url: photo_url
-                }
-            ])
+            .insert([insertData])
             .select()
             .single();
 
@@ -112,7 +117,8 @@ export const createFoodStall = async (req, res) => {
         return res.status(201).json({
             success: true,
             message: "Food stall created successfully",
-            stall: data
+            stall: data,
+            data: data
         });
 
     } catch (err) {
@@ -131,10 +137,14 @@ export const createFoodStall = async (req, res) => {
 export const updateFoodStall = async (req, res) => {
     try {
         const { id } = req.params;
-        const { stall_name, phone_number, directions } = req.body;
+        const stall_name = req.body.stall_name || req.body.name;
         const location = req.body.location !== undefined ? req.body.location : req.body.Location;
-        const timings = req.body.timings !== undefined ? req.body.timings : req.body.Timings;
-        const photo_url = req.body.photo_url !== undefined ? req.body.photo_url : req.body.Photo_url;
+        const timings = req.body.timings !== undefined ? req.body.timings : (req.body.Timings || req.body.opening_hours);
+        const phone_number = req.body.phone_number !== undefined ? req.body.phone_number : (req.body.phone || req.body.contact_number);
+        const directions = req.body.directions;
+        const photo_url = req.body.photo_url !== undefined ? req.body.photo_url : (req.body.Photo_url || req.body.image || req.body.image_url);
+        const status = req.body.status;
+        const description = req.body.description;
 
         const updateData = {};
         if (stall_name !== undefined) updateData.stall_name = stall_name;
@@ -143,6 +153,8 @@ export const updateFoodStall = async (req, res) => {
         if (phone_number !== undefined) updateData.phone_number = phone_number;
         if (directions !== undefined) updateData.directions = directions;
         if (photo_url !== undefined) updateData.Photo_url = photo_url;
+        if (status !== undefined) updateData.status = status;
+        if (description !== undefined) updateData.description = description;
 
         if (Object.keys(updateData).length === 0) {
             return res.status(400).json({
@@ -177,7 +189,8 @@ export const updateFoodStall = async (req, res) => {
         return res.status(200).json({
             success: true,
             message: "Food stall updated successfully",
-            stall: data[0]
+            stall: data[0],
+            data: data[0]
         });
 
     } catch (err) {

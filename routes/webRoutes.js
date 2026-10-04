@@ -3,7 +3,8 @@ import express from "express";
 import {
     getAllWebsites,
     getWebsiteByName,
-    addWebsite
+    addWebsite,
+    deleteWebsite
 } from "../controllers/webController.js";
 import { protect, authorize } from "../middlewares/authMiddleware.js";
 
@@ -26,6 +27,13 @@ router.post(
     protect,
     authorize('Admin'),
     addWebsite
+);
+
+router.delete(
+    "/delete-website/:id",
+    protect,
+    authorize('Admin'),
+    deleteWebsite
 );
 
 export default router;
