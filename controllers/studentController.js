@@ -917,6 +917,18 @@ function getHostelNameFormatted(code) {
     return HOSTEL_NAME_MAP[upper] || code;
 }
 
+const STUDENT_WITH_USER_SELECT = `
+    *,
+    User_Details (
+        id,
+        "User Name",
+        email_id,
+        phone_number,
+        photoUrl,
+        is_Valid
+    )
+`;
+
 function formatStudentRow(row) {
     const user = row.User_Details || {};
     const hostelCode = row.Hostel_Details || "";
@@ -1240,11 +1252,57 @@ export const updateStudentCredentials = async (req, res) => {
         const room = req.body["Room No"] !== undefined ? req.body["Room No"] : (req.body.room_no || req.body.room_number);
         const adviser = req.body["Faculty Adviser"] !== undefined ? req.body["Faculty Adviser"] : req.body.faculty_adviser;
         const semester = req.body.current_semester !== undefined ? req.body.current_semester : req.body.semester;
+        const newRollRaw = req.body.new_roll_number;
 
         if (hostel !== undefined) updateData.Hostel_Details = hostel;
         if (room !== undefined) updateData["Room No"] = room;
-        if (adviser !== undefined) updateData["Faculty Adviser"] = adviser;
-        if (semester !== undefined) updateData.current_semester = Number(semester);
+        if (adviser !== undefined) updateData["Faculty Adviser"] = adviser === "" ? null : adviser;
+        if (semester !== undefined) {
+            const semesterNumber = Number(semester);
+            if (!Number.isInteger(semesterNumber) || semesterNumber < 1 || semesterNumber > 10) {
+                return res.status(400).json({ success: false, message: "Semester must be a whole number from 1 to 10" });
+            }
+            updateData.current_semester = semesterNumber;
+        }
+
+        // Roll number rename. Child tables (registrations, leave, grievances,
+        // guest house) follow via ON UPDATE CASCADE foreign keys; gate_entries
+        // has no foreign key, so it is repointed by hand below.
+        const { data: existing, error: findError } = await supabase
+            .from("Student_Details")
+            .select(`"Roll Number"`)
+            .ilike("Roll Number", rollNumber)
+            .maybeSingle();
+
+        if (findError) throw findError;
+        if (!existing) {
+            return res.status(404).json({ success: false, message: "Student not found" });
+        }
+
+        const oldRoll = existing["Roll Number"];
+        let newRoll = null;
+
+        if (newRollRaw !== undefined) {
+            newRoll = String(newRollRaw).trim().toUpperCase();
+            if (!/^[A-Z0-9]+$/.test(newRoll)) {
+                return res.status(400).json({ success: false, message: "Roll number can only contain letters and digits" });
+            }
+            if (newRoll === oldRoll) {
+                newRoll = null;
+            } else {
+                const { data: clash, error: clashError } = await supabase
+                    .from("Student_Details")
+                    .select(`"Roll Number"`)
+                    .ilike("Roll Number", newRoll)
+                    .maybeSingle();
+
+                if (clashError) throw clashError;
+                if (clash) {
+                    return res.status(409).json({ success: false, message: `Roll number ${newRoll} already belongs to another student` });
+                }
+                updateData["Roll Number"] = newRoll;
+            }
+        }
 
         if (Object.keys(updateData).length === 0) {
             return res.status(400).json({
@@ -1256,18 +1314,35 @@ export const updateStudentCredentials = async (req, res) => {
         const { data, error } = await supabase
             .from("Student_Details")
             .update(updateData)
-            .ilike("Roll Number", rollNumber)
-            .select();
+            .eq("Roll Number", oldRoll)
+            .select(STUDENT_WITH_USER_SELECT);
 
-        if (error) throw error;
+        if (error) {
+            if (error.code === "23503") {
+                return res.status(409).json({
+                    success: false,
+                    message: "This student has linked records (subjects, leave, grievances...), so the roll number can't be changed until the database foreign keys are set to ON UPDATE CASCADE."
+                });
+            }
+            throw error;
+        }
         if (!data || data.length === 0) {
             return res.status(404).json({ success: false, message: "Student not found" });
+        }
+
+        if (newRoll) {
+            const { error: gateError } = await supabase
+                .from("gate_entries")
+                .update({ student_roll_number: newRoll })
+                .eq("student_roll_number", oldRoll);
+
+            if (gateError) console.error("Gate entries roll number update failed:", gateError);
         }
 
         return res.status(200).json({
             success: true,
             message: "Student credentials updated successfully",
-            student: data[0]
+            student: formatStudentRow(data[0])
         });
     } catch (err) {
         console.error(err);
@@ -1577,3 +1652,242 @@ export const updateStudentByRollNumber = async (req, res) => {
 };
 
 
+
+// ========================================================
+// ADMIN DASHBOARD: STUDENT LIST, SEARCH & SUBJECT MANAGEMENT
+// ========================================================
+
+// Strips characters that would break PostgREST's or()/ilike filter syntax
+const sanitizeSearch = (value) => String(value || "").replace(/[,()*%"\\]/g, " ").trim();
+
+// GET /api/students/admin-list?query=&page=1&pageSize=25
+// Server-side search (name or roll number) + paging, so the dashboard isn't
+// limited by Supabase's 1000-row cap on a plain select.
+export const adminListStudents = async (req, res) => {
+    try {
+        const query = sanitizeSearch(req.query.query);
+        const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+        const pageSize = Math.min(100, Math.max(1, parseInt(req.query.pageSize, 10) || 25));
+        const from = (page - 1) * pageSize;
+
+        let request = supabase
+            .from("Student_Details")
+            .select(STUDENT_WITH_USER_SELECT, { count: "exact" })
+            .order("Roll Number", { ascending: true })
+            .range(from, from + pageSize - 1);
+
+        if (query) {
+            const { data: nameMatches, error: nameError } = await supabase
+                .from("User_Details")
+                .select("id")
+                .eq("User Type", "Student")
+                .ilike("User Name", `%${query}%`)
+                .limit(500);
+
+            if (nameError) throw nameError;
+
+            const filters = [`"Roll Number".ilike.*${query}*`];
+            if (nameMatches.length > 0) {
+                filters.push(`User_code.in.(${nameMatches.map(u => u.id).join(",")})`);
+            }
+            request = request.or(filters.join(","));
+        }
+
+        const { data, error, count } = await request;
+        if (error) throw error;
+
+        return res.status(200).json({
+            success: true,
+            total: count || 0,
+            page,
+            pageSize,
+            students: data.map(formatStudentRow)
+        });
+    } catch (err) {
+        console.error(err);
+        return res.status(500).json({ success: false, message: "Server Error" });
+    }
+};
+
+// Looks up the student's canonical roll number + current semester, or sends a 404
+const findStudentForSubjects = async (rollNumber, res) => {
+    const { data, error } = await supabase
+        .from("Student_Details")
+        .select(`"Roll Number", current_semester`)
+        .ilike("Roll Number", rollNumber)
+        .maybeSingle();
+
+    if (error) throw error;
+    if (!data) {
+        res.status(404).json({ success: false, message: "Student not found" });
+        return null;
+    }
+    return { rollNumber: data["Roll Number"], semester: data.current_semester };
+};
+
+// GET /api/students/:rollNumber/subjects - registrations for the current semester
+export const getStudentSubjects = async (req, res) => {
+    try {
+        const student = await findStudentForSubjects(req.params.rollNumber, res);
+        if (!student) return;
+
+        const { data: registrations, error } = await supabase
+            .from("Subject_Registrations")
+            .select("*")
+            .eq("student_id", student.rollNumber)
+            .eq("semester", student.semester);
+
+        if (error) throw error;
+
+        const codes = registrations.map(r => r["subject code"]);
+        let subjects = [];
+        if (codes.length > 0) {
+            const { data, error: subjectsError } = await supabase
+                .from("Subject_Details")
+                .select("subject_code, subject_name, credits")
+                .in("subject_code", codes);
+
+            if (subjectsError) throw subjectsError;
+            subjects = data;
+        }
+
+        const byCode = Object.fromEntries(subjects.map(s => [s.subject_code, s]));
+
+        return res.status(200).json({
+            success: true,
+            semester: student.semester,
+            subjects: registrations.map(r => ({
+                id: r.id,
+                subject_code: r["subject code"],
+                subject_name: byCode[r["subject code"]]?.subject_name || r["subject code"],
+                credits: byCode[r["subject code"]]?.credits ?? null,
+                year: r.Year
+            }))
+        });
+    } catch (err) {
+        console.error(err);
+        return res.status(500).json({ success: false, message: "Server Error" });
+    }
+};
+
+// POST /api/students/:rollNumber/subjects  { subject_code }
+export const addStudentSubject = async (req, res) => {
+    try {
+        const subjectCode = String(req.body.subject_code || "").trim();
+        if (!subjectCode) {
+            return res.status(400).json({ success: false, message: "subject_code is required" });
+        }
+
+        const student = await findStudentForSubjects(req.params.rollNumber, res);
+        if (!student) return;
+
+        if (!student.semester) {
+            return res.status(400).json({ success: false, message: "Set the student's semester before registering subjects" });
+        }
+
+        const { data: subject, error: subjectError } = await supabase
+            .from("Subject_Details")
+            .select("subject_code, subject_name, credits")
+            .eq("subject_code", subjectCode)
+            .maybeSingle();
+
+        if (subjectError) throw subjectError;
+        if (!subject) {
+            return res.status(404).json({ success: false, message: `Subject ${subjectCode} not found` });
+        }
+
+        const { data: existing, error: existingError } = await supabase
+            .from("Subject_Registrations")
+            .select(`id, "subject code", Year`)
+            .eq("student_id", student.rollNumber)
+            .eq("semester", student.semester);
+
+        if (existingError) throw existingError;
+
+        if (existing.some(r => r["subject code"] === subjectCode)) {
+            return res.status(409).json({ success: false, message: `${subjectCode} is already registered` });
+        }
+
+        // Same academic-year rule as the app's own registration flow
+        const now = new Date();
+        const startYear = now.getMonth() >= 6 ? now.getFullYear() : now.getFullYear() - 1;
+        const academicYear = existing[0]?.Year || `${startYear}-${startYear + 1}`;
+
+        const { data: inserted, error: insertError } = await supabase
+            .from("Subject_Registrations")
+            .insert([{
+                student_id: student.rollNumber,
+                "subject code": subjectCode,
+                Year: academicYear,
+                semester: student.semester
+            }])
+            .select("id, Year")
+            .single();
+
+        if (insertError) throw insertError;
+
+        return res.status(201).json({
+            success: true,
+            message: "Subject registered",
+            subject: {
+                id: inserted.id,
+                subject_code: subject.subject_code,
+                subject_name: subject.subject_name,
+                credits: subject.credits,
+                year: inserted.Year
+            }
+        });
+    } catch (err) {
+        console.error(err);
+        return res.status(500).json({ success: false, message: "Server Error" });
+    }
+};
+
+// DELETE /api/students/:rollNumber/subjects/:registrationId
+export const removeStudentSubject = async (req, res) => {
+    try {
+        const student = await findStudentForSubjects(req.params.rollNumber, res);
+        if (!student) return;
+
+        const { data, error } = await supabase
+            .from("Subject_Registrations")
+            .delete()
+            .eq("id", req.params.registrationId)
+            .eq("student_id", student.rollNumber)
+            .select("id");
+
+        if (error) throw error;
+        if (!data || data.length === 0) {
+            return res.status(404).json({ success: false, message: "Registration not found for this student" });
+        }
+
+        return res.status(200).json({ success: true, message: "Subject removed" });
+    } catch (err) {
+        console.error(err);
+        return res.status(500).json({ success: false, message: "Server Error" });
+    }
+};
+
+// GET /api/students/subject-catalog?query=CSE - subject picker for the dashboard
+export const searchSubjectCatalog = async (req, res) => {
+    try {
+        const query = sanitizeSearch(req.query.query);
+        if (!query) {
+            return res.status(200).json({ success: true, subjects: [] });
+        }
+
+        const { data, error } = await supabase
+            .from("Subject_Details")
+            .select("subject_code, subject_name, credits")
+            .or(`subject_code.ilike.*${query}*,subject_name.ilike.*${query}*`)
+            .order("subject_code")
+            .limit(20);
+
+        if (error) throw error;
+
+        return res.status(200).json({ success: true, subjects: data });
+    } catch (err) {
+        console.error(err);
+        return res.status(500).json({ success: false, message: "Server Error" });
+    }
+};

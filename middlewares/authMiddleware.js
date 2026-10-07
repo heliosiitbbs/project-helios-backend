@@ -27,7 +27,7 @@ export const protect = async (req, res, next) => {
     // 3. Check user validity from database
     const { data: userData, error: userError } = await supabase
       .from("User_Details")
-      .select("id, email_id, is_Valid")
+      .select(`id, email_id, is_Valid, Student_Details ("Roll Number", Hostel_Details)`)
       .eq("id", decoded.id)
       .maybeSingle();
 
@@ -53,11 +53,21 @@ export const protect = async (req, res, next) => {
       });
     }
 
-    // 4. Attach user info to request
+    // 4. Attach user info to request. For students, roll number and hostel
+    // come from the database rather than the token, so an admin changing
+    // them takes effect without the student having to log in again.
+    const { Student_Details: studentRows, ...dbUser } = userData;
+    const student = Array.isArray(studentRows) ? studentRows[0] : studentRows;
+
     req.user = {
       ...decoded,
-      dbUser: userData
+      dbUser
     };
+
+    if (decoded.user_type === "Student" && student) {
+      req.user.rollnumber = student["Roll Number"];
+      req.user.hostel = student.Hostel_Details;
+    }
 
     next();
 
