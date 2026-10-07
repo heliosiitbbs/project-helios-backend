@@ -105,12 +105,32 @@ export const createBooking = async (req, res) => {
             });
         }
 
-        if (meals.length === 0) {
+        const checkInDate = new Date(check_in);
+        const checkOutDate = new Date(check_out);
+
+        if (Number.isNaN(checkInDate.getTime()) || Number.isNaN(checkOutDate.getTime())) {
             return res.status(400).json({
                 success: false,
-                message: "Select at least one meal."
+                message: "check_in and check_out must be valid dates."
             });
         }
+
+        if (checkOutDate <= checkInDate) {
+            return res.status(400).json({
+                success: false,
+                message: "Check-out must be after check-in."
+            });
+        }
+
+        // Small grace period so a check-in picked "now" isn't rejected by the time it arrives
+        if (checkInDate.getTime() < Date.now() - 10 * 60 * 1000) {
+            return res.status(400).json({
+                success: false,
+                message: "Check-in can't be in the past."
+            });
+        }
+
+        // Meals are optional (e.g. Meeting Room only bookings)
 
         const visitorIdCardFile = req.files?.visitor_id_card?.[0];
         const approvalProofFile = req.files?.approval_proof?.[0];
@@ -151,7 +171,8 @@ export const createBooking = async (req, res) => {
                     department_section,
                     service_type,
                     purpose_of_booking,
-                    booking_date: check_in.slice(0, 10),
+                    // Campus calendar date (IST); check_in itself is a UTC timestamp
+                    booking_date: new Date(checkInDate.getTime() + 330 * 60 * 1000).toISOString().slice(0, 10),
                     check_in,
                     check_out,
                     approval_category,
@@ -165,16 +186,18 @@ export const createBooking = async (req, res) => {
 
         if (insertError) throw insertError;
 
-        const mealRows = meals.map((meal_type) => ({
-            booking_id: booking.booking_id,
-            meal_type
-        }));
+        if (meals.length > 0) {
+            const mealRows = meals.map((meal_type) => ({
+                booking_id: booking.booking_id,
+                meal_type
+            }));
 
-        const { error: mealsError } = await supabase
-            .from("booking_meals")
-            .insert(mealRows);
+            const { error: mealsError } = await supabase
+                .from("booking_meals")
+                .insert(mealRows);
 
-        if (mealsError) throw mealsError;
+            if (mealsError) throw mealsError;
+        }
 
         return res.status(201).json({
             success: true,

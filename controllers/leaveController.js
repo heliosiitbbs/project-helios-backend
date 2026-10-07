@@ -50,6 +50,14 @@ export const applyForLeave = async (req, res) => {
             });
         }
 
+        // Compare calendar dates (YYYY-MM-DD strings sort chronologically)
+        if (end_date.slice(0, 10) < start_date.slice(0, 10)) {
+            return res.status(400).json({
+                success: false,
+                message: "End date must be on or after the start date."
+            });
+        }
+
         // student_id is a foreign key to Student_Details."Roll Number"
         const student_id = req.user.rollnumber;
 

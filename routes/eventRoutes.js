@@ -4,7 +4,8 @@ import {
     approveVerifier,
     approveApplicant,
     getAllApplicantStatus,
-    getMyEventPasses
+    getMyEventPasses,
+    scanPass
 } from "../controllers/eventController.js";
 import { protect, authorize } from "../middlewares/authMiddleware.js";
 
@@ -18,5 +19,7 @@ router.post("/approve-verifier", protect, approveVerifier);
 router.post("/approve-applicant", protect, authorize('Admin'), approveApplicant);
 router.get("/get-all-applicant-status", protect, authorize('Admin'), getAllApplicantStatus);
 router.get("/my-passes", protect, getMyEventPasses);
+// Door staff scanning a pass QR - gated by the event verification code, like approve-verifier
+router.post("/scan-pass", protect, scanPass);
 
 export default router;

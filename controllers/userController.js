@@ -123,10 +123,10 @@ export const updateBloodGroup = async (req, res) => {
   try {
     const { blood_group } = req.body;
 
-    if (!blood_group) {
+    if (!blood_group || !/^(A|B|AB|O)[+-]$/.test(String(blood_group).trim().toUpperCase())) {
       return res.status(400).json({
         success: false,
-        message: "blood_group is required"
+        message: "blood_group must be one of A+, A-, B+, B-, AB+, AB-, O+, O-"
       });
     }
 

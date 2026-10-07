@@ -88,7 +88,7 @@ export const approveVerifier = async (req, res) => {
         if (error) throw error;
 
         if (!event) {
-            return res.status(401).json({
+            return res.status(403).json({
                 success: false,
                 message: "Invalid verification code. Access Denied."
             });
@@ -97,7 +97,8 @@ export const approveVerifier = async (req, res) => {
         return res.status(200).json({
             success: true,
             message: `Approved successfully as a verifier for: ${event.event_name}`,
-            event_id: event.event_id
+            event_id: event.event_id,
+            event_name: event.event_name
         });
 
     } catch (err) {
@@ -229,7 +230,7 @@ export const getMyEventPasses = async (req, res) => {
 
         const { data: passes, error } = await supabase
             .from("event_passes")
-            .select("event_id, applicant_id, has_completed")
+            .select("id, event_id, applicant_id, has_completed")
             .in("applicant_id", identityCandidates);
 
         if (error) throw error;
@@ -265,5 +266,109 @@ export const getMyEventPasses = async (req, res) => {
         return res.status(500).json({
             success: false,
             message: "Server Error pulling your event passes."});
+    }
+};
+
+// ==========================================
+// 6. SCAN PASS (door staff scanning a student's pass QR)
+// ==========================================
+// Gated by the event's verification_code, like approve-verifier. The pass is
+// marked used with a single conditional update, so two scanners can never both
+// accept the same pass.
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export const scanPass = async (req, res) => {
+    const verification_code = String(req.body.verification_code || "").trim().toUpperCase();
+    const pass_id = String(req.body.pass_id || "").trim();
+
+    if (!verification_code || !pass_id) {
+        return res.status(400).json({
+            success: false,
+            message: "verification_code and pass_id are required."
+        });
+    }
+
+    if (!UUID_PATTERN.test(pass_id)) {
+        return res.status(400).json({
+            success: false,
+            allowed: false,
+            message: "This is not a valid Helios event pass."
+        });
+    }
+
+    try {
+        const { data: event, error: eventError } = await supabase
+            .from("event_details")
+            .select("event_id, event_name, end_time")
+            .eq("verification_code", verification_code)
+            .maybeSingle();
+
+        if (eventError) throw eventError;
+
+        if (!event) {
+            return res.status(403).json({
+                success: false,
+                message: "Invalid verification code. Access Denied."
+            });
+        }
+
+        if (event.end_time && new Date(event.end_time) < new Date()) {
+            return res.status(403).json({
+                success: false,
+                allowed: false,
+                message: `Access Denied: ${event.event_name} has ended.`
+            });
+        }
+
+        // Only flips an unused pass that belongs to this event
+        const { data: used, error: updateError } = await supabase
+            .from("event_passes")
+            .update({ has_completed: true })
+            .eq("id", pass_id)
+            .eq("event_id", event.event_id)
+            .eq("has_completed", false)
+            .select("id, applicant_id")
+            .maybeSingle();
+
+        if (updateError) throw updateError;
+
+        if (used) {
+            return res.status(200).json({
+                success: true,
+                allowed: true,
+                message: "Access Granted: pass checked in.",
+                applicant_id: used.applicant_id,
+                event_name: event.event_name
+            });
+        }
+
+        // Nothing was updated - work out why
+        const { data: pass, error: fetchError } = await supabase
+            .from("event_passes")
+            .select("event_id, has_completed")
+            .eq("id", pass_id)
+            .maybeSingle();
+
+        if (fetchError) throw fetchError;
+
+        if (!pass || pass.event_id !== event.event_id) {
+            return res.status(404).json({
+                success: false,
+                allowed: false,
+                message: `Access Denied: this pass is not for ${event.event_name}.`
+            });
+        }
+
+        return res.status(409).json({
+            success: false,
+            allowed: false,
+            message: "Access Denied: this pass has already been used."
+        });
+
+    } catch (err) {
+        console.error(err);
+        return res.status(500).json({
+            success: false,
+            message: "Server Error scanning pass."});
     }
 };
