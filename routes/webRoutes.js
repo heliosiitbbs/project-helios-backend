@@ -4,6 +4,7 @@ import {
     getAllWebsites,
     getWebsiteByName,
     addWebsite,
+    updateWebsite,
     deleteWebsite
 } from "../controllers/webController.js";
 import { protect, authorize } from "../middlewares/authMiddleware.js";
@@ -25,14 +26,21 @@ router.get(
 router.post(
     "/add-website",
     protect,
-    authorize('Admin'),
+    authorize('Admin', 'Super Admin'),
     addWebsite
+);
+
+router.put(
+    "/update-website/:id",
+    protect,
+    authorize('Admin', 'Super Admin'),
+    updateWebsite
 );
 
 router.delete(
     "/delete-website/:id",
     protect,
-    authorize('Admin'),
+    authorize('Admin', 'Super Admin'),
     deleteWebsite
 );
 
