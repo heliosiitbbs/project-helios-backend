@@ -1,7 +1,7 @@
 import express from "express";
 import multer from "multer";
-import { getMyProfile, updatePhoneNumber, updateBloodGroup, uploadUserPhoto, changePin, getAdmins } from "../controllers/userController.js";
-import { protect } from "../middlewares/authMiddleware.js";
+import { getMyProfile, updatePhoneNumber, updateBloodGroup, uploadUserPhoto, changePin, getAdmins, createAdmin, updateAdmin } from "../controllers/userController.js";
+import { protect, authorize } from "../middlewares/authMiddleware.js";
 const router = express.Router();
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -10,7 +10,9 @@ const upload = multer({
   }
 });
 router.get("/me", protect, getMyProfile);
-router.get("/admins", protect, getAdmins);
+router.get("/admins", protect, authorize("Super Admin"), getAdmins);
+router.post("/admins", protect, authorize("Super Admin"), createAdmin);
+router.patch("/admins/:id", protect, authorize("Super Admin"), updateAdmin);
 router.patch("/update-phone-number", protect,updatePhoneNumber);
 router.patch("/update-blood-group", protect, updateBloodGroup);
 router.patch("/change-pin", protect, changePin);
