@@ -138,12 +138,23 @@ export const loginUser = async (req, res) => {
             { expiresIn: "1h" }
         );
 
+        // Record this login; the previous timestamp is returned so the admin
+        // dashboard can show what's new since the user last signed in.
+        // A failure here must never block the login itself.
+        const previousLoginAt = user.last_login_at ?? null;
+        const { error: lastLoginError } = await supabase
+            .from("User_Details")
+            .update({ last_login_at: new Date().toISOString() })
+            .eq("id", user.id);
+        if (lastLoginError) console.error("Failed to record last login:", lastLoginError.message);
+
         // Step 6: Send response to frontend
         res.json({
             success: true,
             message: "Login successful",
             token,
-            userType: user["User Type"]
+            userType: user["User Type"],
+            previousLoginAt
         });
 
     } catch (err) {
