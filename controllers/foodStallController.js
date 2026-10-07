@@ -11,6 +11,21 @@ const clearFoodStallsCache = async () => {
     }
 };
 
+// Uploads an optional multipart "photo" to the food_stall_images bucket and returns its public URL
+const uploadStallPhoto = async (file) => {
+    const fileExtension = file.originalname.split(".").pop();
+    const filePath = `stalls/${Date.now()}.${fileExtension}`;
+
+    const { error } = await supabase.storage
+        .from("food_stall_images")
+        .upload(filePath, file.buffer, { contentType: file.mimetype });
+
+    if (error) throw error;
+
+    const { data } = supabase.storage.from("food_stall_images").getPublicUrl(filePath);
+    return data.publicUrl;
+};
+
 // =====================================
 // 1. GET ALL FOOD STALLS
 // GET /api/food-stalls
@@ -76,10 +91,21 @@ export const createFoodStall = async (req, res) => {
         const location = req.body.location !== undefined ? req.body.location : req.body.Location;
         const timings = req.body.timings !== undefined ? req.body.timings : (req.body.Timings || req.body.opening_hours);
         const phone_number = req.body.phone_number !== undefined ? req.body.phone_number : (req.body.phone || req.body.contact_number);
-        const directions = req.body.directions;
-        const photo_url = req.body.photo_url !== undefined ? req.body.photo_url : (req.body.Photo_url || req.body.image || req.body.image_url);
-        const status = req.body.status;
-        const description = req.body.description;
+        const directions = req.body.directions !== undefined ? req.body.directions : req.body.Directions;
+        let photo_url = req.body.photo_url !== undefined ? req.body.photo_url : (req.body.Photo_url || req.body.image || req.body.image_url);
+        const type = req.body.type;
+
+        if (req.file) {
+            try {
+                photo_url = await uploadStallPhoto(req.file);
+            } catch (uploadError) {
+                console.error(uploadError);
+                return res.status(500).json({
+                    success: false,
+                    message: "Error uploading stall photo"
+                });
+            }
+        }
 
         if (!stall_name) {
             return res.status(400).json({
@@ -93,10 +119,9 @@ export const createFoodStall = async (req, res) => {
         if (location !== undefined) insertData.Location = location;
         if (timings !== undefined) insertData.Timings = timings;
         if (phone_number !== undefined) insertData.phone_number = phone_number;
-        if (directions !== undefined) insertData.directions = directions;
+        if (directions !== undefined) insertData.Directions = directions;
         if (photo_url !== undefined) insertData.Photo_url = photo_url;
-        if (status !== undefined) insertData.status = status;
-        if (description !== undefined) insertData.description = description;
+        if (type !== undefined) insertData.type = type;
 
         const { data, error } = await supabase
             .from("food_stall_details")
@@ -141,20 +166,30 @@ export const updateFoodStall = async (req, res) => {
         const location = req.body.location !== undefined ? req.body.location : req.body.Location;
         const timings = req.body.timings !== undefined ? req.body.timings : (req.body.Timings || req.body.opening_hours);
         const phone_number = req.body.phone_number !== undefined ? req.body.phone_number : (req.body.phone || req.body.contact_number);
-        const directions = req.body.directions;
-        const photo_url = req.body.photo_url !== undefined ? req.body.photo_url : (req.body.Photo_url || req.body.image || req.body.image_url);
-        const status = req.body.status;
-        const description = req.body.description;
+        const directions = req.body.directions !== undefined ? req.body.directions : req.body.Directions;
+        let photo_url = req.body.photo_url !== undefined ? req.body.photo_url : (req.body.Photo_url || req.body.image || req.body.image_url);
+        const type = req.body.type;
+
+        if (req.file) {
+            try {
+                photo_url = await uploadStallPhoto(req.file);
+            } catch (uploadError) {
+                console.error(uploadError);
+                return res.status(500).json({
+                    success: false,
+                    message: "Error uploading stall photo"
+                });
+            }
+        }
 
         const updateData = {};
         if (stall_name !== undefined) updateData.stall_name = stall_name;
         if (location !== undefined) updateData.Location = location;
         if (timings !== undefined) updateData.Timings = timings;
         if (phone_number !== undefined) updateData.phone_number = phone_number;
-        if (directions !== undefined) updateData.directions = directions;
+        if (directions !== undefined) updateData.Directions = directions;
         if (photo_url !== undefined) updateData.Photo_url = photo_url;
-        if (status !== undefined) updateData.status = status;
-        if (description !== undefined) updateData.description = description;
+        if (type !== undefined) updateData.type = type;
 
         if (Object.keys(updateData).length === 0) {
             return res.status(400).json({
@@ -325,7 +360,7 @@ export const searchFoodStalls = async (req, res) => {
         const { data, error } = await supabase
             .from("food_stall_details")
             .select("*")
-            .or(`stall_name.ilike.${searchTerm},Location.ilike.${searchTerm},directions.ilike.${searchTerm}`);
+            .or(`stall_name.ilike.${searchTerm},Location.ilike.${searchTerm},Directions.ilike.${searchTerm}`);
 
         if (error) {
             console.error(error);

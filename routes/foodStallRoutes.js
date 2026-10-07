@@ -8,7 +8,8 @@ import {
     searchFoodStalls,
     getFoodStallById
 } from "../controllers/foodStallController.js";
-import { protect } from "../middlewares/authMiddleware.js";
+import { protect, authorize } from "../middlewares/authMiddleware.js";
+import upload from "../middlewares/uploadStallPhoto.js";
 
 const router = express.Router();
 
@@ -19,9 +20,9 @@ router.get("/get-food-stalls", protect, getFoodStalls); // Legacy endpoint suppo
 
 // Root CRUD routes
 router.get("/", protect, getFoodStalls);
-router.post("/", protect, createFoodStall);
-router.put("/:id", protect, updateFoodStall);
-router.delete("/:id", protect, deleteFoodStall);
+router.post("/", protect, authorize("Super Admin", "Admin"), upload.single("photo"), createFoodStall);
+router.put("/:id", protect, authorize("Super Admin", "Admin"), upload.single("photo"), updateFoodStall);
+router.delete("/:id", protect, authorize("Super Admin", "Admin"), deleteFoodStall);
 
 // Parameterized route (MUST come after specific routes)
 router.get("/:id", protect, getFoodStallById);
