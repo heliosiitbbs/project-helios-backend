@@ -1,5 +1,6 @@
 import supabase from "../config/Supabase.js";
 import redis from "../config/redis.js";
+import { findDatePlanForApp } from "./busAdminController.js";
 
 // =====================================
 // GET BUS SCHEDULE
@@ -9,6 +10,7 @@ export const getBusSchedule = async (req, res) => {
     try {
         const {
             day_of_week,
+            date, // optional "YYYY-MM-DD": a one-off plan for that date replaces the regular schedule
             time,
             start_Location,
             end_Location
@@ -18,10 +20,16 @@ export const getBusSchedule = async (req, res) => {
 
         let buses;
         let source = "supabase";
+        let plan = null;
 
-        const cachedData = await redis.get(cacheKey);
+        const datePlan = date ? await findDatePlanForApp(date) : null;
+        const cachedData = datePlan ? null : await redis.get(cacheKey);
 
-        if (cachedData) {
+        if (datePlan) {
+            buses = datePlan.trips;
+            plan = { date, note: datePlan.note };
+            source = "date-plan";
+        } else if (cachedData) {
             buses = cachedData;
             source = "redis";
         } else {
@@ -75,6 +83,7 @@ export const getBusSchedule = async (req, res) => {
             success: true,
             userType: req.user.user_type,
             source,
+            plan,
             buses: filteredBuses
         });
 
