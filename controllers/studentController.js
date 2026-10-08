@@ -1353,17 +1353,24 @@ export const updateStudentCredentials = async (req, res) => {
 // 9. Student Statistics (GET /api/students/stats)
 export const getStudentStats = async (req, res) => {
     try {
-        const { data: students, error: studentError } = await supabase
-            .from("Student_Details")
-            .select(`
-                current_semester,
-                Hostel_Details,
-                User_Details (
-                    is_Valid
-                )
-            `);
+        // Page through: PostgREST caps a single read at 1000 rows
+        const students = [];
+        for (let from = 0; ; from += 1000) {
+            const { data, error: studentError } = await supabase
+                .from("Student_Details")
+                .select(`
+                    current_semester,
+                    Hostel_Details,
+                    User_Details (
+                        is_Valid
+                    )
+                `)
+                .range(from, from + 999);
 
-        if (studentError) throw studentError;
+            if (studentError) throw studentError;
+            students.push(...data);
+            if (data.length < 1000) break;
+        }
 
         let total_students = students.length;
         let total_active_students = 0;

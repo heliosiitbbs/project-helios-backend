@@ -14,14 +14,19 @@ const parseTimeToHour = (timeString) => {
 // e.g. "22CS01031" -> year 22, branch "CS", course "01", sequence "031"
 const COURSE_CODE_TO_NAME = {
   "01": "B.Tech",
-  "02": "M.Tech"
+  "02": "Dual Degree"
 };
 
+// Values must match branches.name exactly (the curriculum lookup is by name)
 const BRANCH_CODE_TO_NAME = {
-  CS: "CSE",
-  EC: "ECE",
-  EE: "EEE",
-  ME: "Mechanical"
+  CS: "Computer Science and Engineering",
+  EC: "Electronics and Communication Engineering",
+  EE: "Electrical Engineering",
+  ME: "Mechanical Engineering",
+  CE: "Civil Engineering",
+  EP: "Engineering Physics",
+  MM: "Metallurgical and Materials Engineering",
+  MC: "Mathematics and Computing"
 };
 
 const parseRollNumber = (rollNumber) => {
