@@ -35,6 +35,7 @@ export const protect = async (req, res, next) => {
 
     // 3. Check user validity from database
     const { data: userData, error: userError } = await supabase
+      .from("User_Details")
       .select(`*, Student_Details ("Roll Number", Hostel_Details)`)
       .eq("id", decoded.id)
       .maybeSingle();
