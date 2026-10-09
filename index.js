@@ -38,6 +38,7 @@ import paperRoutes from "./routes/paperRoutes.js";
 import notificationRoutes from "./routes/notificationRoutes.js";
 import gateRoutes from "./routes/gateRoutes.js";
 import bugRoutes from "./routes/bugRoutes.js";
+import cabSharingRoutes from "./routes/cabSharingRoutes.js";
 
 const allowedOrigins = (process.env.CORS_ALLOWED_ORIGINS || "")
     .split(",")
@@ -98,6 +99,7 @@ app.use("/api/papers", paperRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/gate", gateRoutes);
 app.use("/api/bugs", bugRoutes);
+app.use("/api/cab-sharing", cabSharingRoutes);
 
 app.use((err, req, res, next) => {
     console.error(err);
