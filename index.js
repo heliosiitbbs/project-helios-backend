@@ -39,6 +39,8 @@ import notificationRoutes from "./routes/notificationRoutes.js";
 import gateRoutes from "./routes/gateRoutes.js";
 import bugRoutes from "./routes/bugRoutes.js";
 import cabSharingRoutes from "./routes/cabSharingRoutes.js";
+import schedulerRoutes from "./routes/schedulerRoutes.js";
+import { initScheduler } from "./jobs/cronScheduler.js";
 
 const allowedOrigins = (process.env.CORS_ALLOWED_ORIGINS || "")
     .split(",")
@@ -100,6 +102,7 @@ app.use("/api/notifications", notificationRoutes);
 app.use("/api/gate", gateRoutes);
 app.use("/api/bugs", bugRoutes);
 app.use("/api/cab-sharing", cabSharingRoutes);
+app.use("/api/scheduler", schedulerRoutes);
 
 app.use((err, req, res, next) => {
     console.error(err);
@@ -121,4 +124,5 @@ const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server is running safely on port ${PORT}`);
+    initScheduler();
 });

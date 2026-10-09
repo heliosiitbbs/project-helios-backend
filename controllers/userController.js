@@ -405,6 +405,7 @@ export const getAdmins = async (req, res) => {
     return res.status(500).json({ success: false, message: "Server Error" });
   }
 };
+
 // =====================================
 // CREATE ADMIN ACCOUNT (SUPER ADMIN)
 // POST /api/users/admins  { name, email, role, password }
@@ -530,5 +531,42 @@ export const updateAdmin = async (req, res) => {
   } catch (err) {
     console.error("UPDATE ADMIN ERROR:", err);
     return res.status(500).json({ success: false, message: "Server Error" });
+  }
+};
+
+export const updateUserExpiry = async (req, res) => {
+  try {
+    const { email_id, id, expiry_date } = req.body;
+
+    if (!email_id && !id) {
+      return res.status(400).json({
+        success: false,
+        message: "email_id or id is required"
+      });
+    }
+
+    let query = supabase.from("User_Details").update({ expiry_date: expiry_date !== undefined ? expiry_date : true });
+
+    if (id) {
+      query = query.eq("id", id);
+    } else {
+      query = query.eq("email_id", email_id);
+    }
+
+    const { data, error } = await query.select("*");
+
+    if (error) throw error;
+    if (!data || data.length === 0) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "User expiry date updated successfully",
+      user: data[0]
+    });
+  } catch (err) {
+    console.error("UPDATE USER EXPIRY ERROR:", err);
+    return res.status(500).json({ success: false, message: "Server Error", error: err.message });
   }
 };

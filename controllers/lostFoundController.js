@@ -577,28 +577,29 @@ message:
       ownerEmail = studentDetails.User_Details.email_id;
     }
 
-const {
-data,
-error
+const updatePayload = {
+  is_resolved: true,
+  given_person_id: ownerEmail,
+  resolved_at: new Date().toISOString()
+};
+
+let { data, error } = await supabase
+  .from("lost_and_found_details")
+  .update(updatePayload)
+  .eq("id", item_id)
+  .select();
+
+// Graceful fallback if resolved_at column has not yet been migrated in database
+if (error && error.message && error.message.includes("resolved_at")) {
+  delete updatePayload.resolved_at;
+  const retry = await supabase
+    .from("lost_and_found_details")
+    .update(updatePayload)
+    .eq("id", item_id)
+    .select();
+  data = retry.data;
+  error = retry.error;
 }
-=
-await supabase
-.from(
-"lost_and_found_details"
-)
-.update({
-
-is_resolved:true,
-
-given_person_id:
-ownerEmail
-
-})
-.eq(
-"id",
-item_id
-)
-.select();
 
 
 
@@ -832,14 +833,29 @@ export const resolveViaQr = async (req, res) => {
       });
     }
 
-    const { data, error } = await supabase
+    const qrUpdatePayload = {
+      is_resolved: true,
+      given_person_id: cleanEmail,
+      resolved_at: new Date().toISOString()
+    };
+
+    let { data, error } = await supabase
       .from("lost_and_found_details")
-      .update({
-        is_resolved: true,
-        given_person_id: cleanEmail
-      })
+      .update(qrUpdatePayload)
       .eq("id", item_id)
       .select();
+
+    // Fallback if resolved_at is not migrated yet
+    if (error && error.message && error.message.includes("resolved_at")) {
+      delete qrUpdatePayload.resolved_at;
+      const retry = await supabase
+        .from("lost_and_found_details")
+        .update(qrUpdatePayload)
+        .eq("id", item_id)
+        .select();
+      data = retry.data;
+      error = retry.error;
+    }
 
     if (error) {
       console.error(error);

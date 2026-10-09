@@ -942,6 +942,7 @@ function formatStudentRow(row) {
         phone_number: user.phone_number || null,
         photo: user.photoUrl || null,
         is_valid: user.is_Valid !== undefined ? user.is_Valid : null,
+        expiry_date: user.expiry_date !== undefined ? user.expiry_date : null,
 
         // Roll Number aliases
         roll_number: row["Roll Number"] || null,
@@ -1253,7 +1254,6 @@ export const updateStudentCredentials = async (req, res) => {
         const adviser = req.body["Faculty Adviser"] !== undefined ? req.body["Faculty Adviser"] : req.body.faculty_adviser;
         const semester = req.body.current_semester !== undefined ? req.body.current_semester : req.body.semester;
         const newRollRaw = req.body.new_roll_number;
-
         if (hostel !== undefined) updateData.Hostel_Details = hostel;
         if (room !== undefined) updateData["Room No"] = room;
         if (adviser !== undefined) updateData["Faculty Adviser"] = adviser === "" ? null : adviser;

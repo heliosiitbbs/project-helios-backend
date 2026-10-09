@@ -35,8 +35,7 @@ export const protect = async (req, res, next) => {
 
     // 3. Check user validity from database
     const { data: userData, error: userError } = await supabase
-      .from("User_Details")
-      .select(`id, email_id, is_Valid, Hostel, Student_Details ("Roll Number", Hostel_Details)`)
+      .select(`*, Student_Details ("Roll Number", Hostel_Details)`)
       .eq("id", decoded.id)
       .maybeSingle();
 
@@ -55,10 +54,15 @@ export const protect = async (req, res, next) => {
       });
     }
 
-    if (userData.is_Valid !== true) {
+    const isExpired = userData.expiry_date === true ||
+      userData.expiry_date === "true" ||
+      userData.is_expired === true ||
+      (userData.expiry_date && !isNaN(new Date(userData.expiry_date).getTime()) && new Date(userData.expiry_date) <= new Date());
+
+    if (userData.is_Valid !== true || isExpired) {
       return res.status(403).json({
         success: false,
-        message: "User account is invalid or deactivated"
+        message: "User account has expired or is deactivated"
       });
     }
 
