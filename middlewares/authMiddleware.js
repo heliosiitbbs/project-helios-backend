@@ -24,6 +24,15 @@ export const protect = async (req, res, next) => {
     // 2. Verify token
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
+    // Short-lived setup tokens (Google check / email code, before a PIN exists)
+    // only unlock the auth endpoints that ask for them - never the rest of the API
+    if (decoded.purpose) {
+      return res.status(401).json({
+        success: false,
+        message: "Not authorized, finish signing in first"
+      });
+    }
+
     // 3. Check user validity from database
     const { data: userData, error: userError } = await supabase
       .from("User_Details")

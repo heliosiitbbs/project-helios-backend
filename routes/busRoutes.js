@@ -12,20 +12,15 @@ import {
     updateFleetBus,
     deleteFleetBus,
     getRegularSchedule,
-    addRegularTrip,
-    updateRegularTrip,
-    removeRegularTrip,
+    exportRegularSchedule,
+    previewRegularUpload,
+    applyRegularUpload,
     listDatePlans,
     getDatePlan,
-    createDatePlan,
-    updateDatePlan,
-    deleteDatePlan,
-    addDateTrip,
-    updateDateTrip,
-    deleteDateTrip,
-    cancelBusForDate
+    saveDatePlan
 } from "../controllers/busAdminController.js";
 import { protect, authorize } from "../middlewares/authMiddleware.js";
+import uploadSpreadsheet from "../middlewares/uploadSpreadsheet.js";
 
 const router = express.Router();
 
@@ -62,19 +57,15 @@ router.post("/admin/fleet", ...transportAdmin, addFleetBus);
 router.patch("/admin/fleet/:bus", ...transportAdmin, updateFleetBus);
 router.delete("/admin/fleet/:bus", ...transportAdmin, deleteFleetBus);
 
+// Regular schedule: read one plan, save a whole plan (timeline editor or Excel upload)
 router.get("/admin/regular", ...transportAdmin, getRegularSchedule);
-router.post("/admin/regular", ...transportAdmin, addRegularTrip);
-router.put("/admin/regular", ...transportAdmin, updateRegularTrip);
-router.post("/admin/regular/remove", ...transportAdmin, removeRegularTrip);
+router.get("/admin/regular/export", ...transportAdmin, exportRegularSchedule);
+router.post("/admin/regular/preview", ...transportAdmin, uploadSpreadsheet.single("file"), previewRegularUpload);
+router.post("/admin/regular/apply", ...transportAdmin, applyRegularUpload);
 
+// One-off schedules for a single date
 router.get("/admin/dates", ...transportAdmin, listDatePlans);
 router.get("/admin/dates/:date", ...transportAdmin, getDatePlan);
-router.post("/admin/dates/:date", ...transportAdmin, createDatePlan);
-router.patch("/admin/dates/:date", ...transportAdmin, updateDatePlan);
-router.delete("/admin/dates/:date", ...transportAdmin, deleteDatePlan);
-router.post("/admin/dates/:date/trips", ...transportAdmin, addDateTrip);
-router.post("/admin/dates/:date/cancel-bus", ...transportAdmin, cancelBusForDate);
-router.patch("/admin/dates/:date/trips/:id", ...transportAdmin, updateDateTrip);
-router.delete("/admin/dates/:date/trips/:id", ...transportAdmin, deleteDateTrip);
+router.put("/admin/dates/:date/trips", ...transportAdmin, saveDatePlan);
 
 export default router;

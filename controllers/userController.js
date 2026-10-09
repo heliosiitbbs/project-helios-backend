@@ -5,7 +5,7 @@ export const getMyProfile = async (req, res) => {
   try {
     const { data, error } = await supabase
       .from("User_Details")
-      .select(`"User Name", email_id, phone_number, "User Type", photoUrl, blood_group`)
+      .select(`"User Name", display_name, email_id, phone_number, "User Type", photoUrl, blood_group`)
       .eq("id", req.user.id)
       .maybeSingle();
 
@@ -29,6 +29,8 @@ export const getMyProfile = async (req, res) => {
       user: {
         id: req.user.id,
         name: data["User Name"],
+        // What the student asked to be called (set during first sign-in)
+        displayName: data.display_name || null,
         email: data.email_id,
         phoneNumber: data.phone_number,
         userType: data["User Type"],
