@@ -1,5 +1,4 @@
 import supabase from "../config/Supabase.js";
-import { sendPushToRollNumber } from "../utils/pushNotifications.js";
 
 // 1. GET ALL UNRESOLVED GRIEVANCES
 export const getUnresolvedGrievances = async (req, res) => {
@@ -122,7 +121,7 @@ export const assignGrievance = async (req, res) => {
     }
 };
 
-// 4. MARK RESOLVED
+// 4. MARK RESOLVED - only the student who filed it decides it's fixed
 export const markResolved = async (req, res) => {
     const { grievance_id } = req.body;
 
@@ -130,23 +129,21 @@ export const markResolved = async (req, res) => {
         return res.status(400).json({ success: false, message: "grievance_id is required." });
     }
 
+    if (!req.user.rollnumber) {
+        return res.status(403).json({ success: false, message: "Only the student who filed a grievance can mark it resolved." });
+    }
+
     try {
         const { data, error } = await supabase
             .from("Hostel_Grievances")
-            .update({ is_resolved: true })
+            .update({ is_resolved: true, resolved_at: new Date().toISOString() })
             .eq("id", grievance_id)
+            .eq("student_id", req.user.rollnumber)
             .select()
             .maybeSingle();
 
         if (error) throw error;
         if (!data) return res.status(404).json({ success: false, message: "Grievance record not found." });
-
-        sendPushToRollNumber(data.student_id, {
-            type: "grievance",
-            title: "Grievance Resolved",
-            body: data.description ? `"${data.description.slice(0, 80)}" has been resolved.` : "Your grievance has been resolved.",
-            data: { screen: "GrievanceHome" }
-        }).catch((err) => console.error("Failed to send grievance push", err));
 
         return res.status(200).json({ success: true, message: "Grievance marked as resolved.", grievance: data });
     } catch (err) {
@@ -179,7 +176,20 @@ export const getGrievanceHistory = async (req, res) => {
 
         if (error) throw error;
 
-        return res.status(200).json({ success: true, count: data.length, history: data });
+        // Who the hostel admin assigned each grievance to (hostel_staff has no app accounts)
+        const staffIds = [...new Set(data.map((g) => g.assigned_staff_id).filter(Boolean))];
+        let staff = new Map();
+        if (staffIds.length) {
+            const { data: members, error: staffError } = await supabase
+                .from("hostel_staff")
+                .select("id, name, role, phone")
+                .in("id", staffIds);
+            if (staffError) throw staffError;
+            staff = new Map(members.map((m) => [m.id, m]));
+        }
+        const history = data.map((g) => ({ ...g, staff: g.assigned_staff_id ? staff.get(g.assigned_staff_id) || null : null }));
+
+        return res.status(200).json({ success: true, count: history.length, history });
     } catch (err) {
         console.error(err);
         return res.status(500).json({ success: false, message: "Error pulling grievance history."});

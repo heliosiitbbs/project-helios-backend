@@ -46,8 +46,10 @@ async function sendExpoPush(messages) {
 async function insertNotificationRows(rows) {
     if (rows.length === 0) return;
 
-    const { error } = await supabase.from("notifications").insert(rows);
-    if (error) console.error("Failed to insert notification rows", error);
+    for (let i = 0; i < rows.length; i += 1000) {
+        const { error } = await supabase.from("notifications").insert(rows.slice(i, i + 1000));
+        if (error) console.error("Failed to insert notification rows", error);
+    }
 }
 
 export async function sendPushToUserId(userId, { title, body, data, type }) {
@@ -94,15 +96,57 @@ export async function sendPushToRollNumber(rollNumber, payload) {
 }
 
 export async function sendPushToAll({ title, body, data, type }) {
-    const { data: users, error: usersError } = await supabase.from("User_Details").select("id");
-
-    if (usersError || !users?.length) return;
+    // Supabase returns at most 1000 rows per request, so page through everyone
+    const users = await selectAll(() => supabase.from("User_Details").select("id").order("id"));
+    if (!users.length) return;
 
     await insertNotificationRows(users.map((u) => ({ user_id: u.id, type, title, body, data })));
 
-    const { data: tokens } = await supabase.from("push_tokens").select("expo_push_token");
+    const tokens = await selectAll(() => supabase.from("push_tokens").select("expo_push_token").order("expo_push_token"));
 
-    if (tokens?.length) {
+    if (tokens.length) {
         await sendExpoPush(tokens.map((t) => ({ to: t.expo_push_token, title, body, data })));
     }
 }
+
+async function selectAll(build) {
+    const rows = [];
+    for (let from = 0; ; from += 1000) {
+        const { data, error } = await build().range(from, from + 999);
+        if (error) {
+            console.error("Failed to load notification recipients", error);
+            break;
+        }
+        rows.push(...data);
+        if (data.length < 1000) break;
+    }
+    return rows;
+}
+
+// One notification per user, each with its own text: [{ userId, title, body, data, type }]
+export async function sendPushToUsers(items) {
+    const list = items.filter((i) => i.userId);
+    if (list.length === 0) return;
+
+    await insertNotificationRows(list.map(({ userId, type, title, body, data }) => ({ user_id: userId, type, title, body, data })));
+
+    const byUser = new Map(list.map((i) => [String(i.userId), i]));
+    const ids = [...byUser.keys()];
+    const tokens = [];
+    for (let i = 0; i < ids.length; i += 300) {
+        const { data } = await supabase.from("push_tokens").select("user_id, expo_push_token").in("user_id", ids.slice(i, i + 300));
+        if (data) tokens.push(...data);
+    }
+
+    await sendExpoPush(tokens.map((t) => {
+        const { title, body, data } = byUser.get(String(t.user_id));
+        return { to: t.expo_push_token, title, body, data };
+    }));
+}
+
+// "Fri, 10 Oct" for a YYYY-MM-DD date
+export const formatDay = (isoDate) =>
+    new Date(`${isoDate}T00:00:00`).toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short" });
+
+// Today's date (YYYY-MM-DD) on campus, so past dates don't trigger notifications
+export const todayOnCampus = () => new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });

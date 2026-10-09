@@ -1,6 +1,7 @@
 import xlsx from "xlsx";
 import supabase from "../config/Supabase.js";
 import redis from "../config/redis.js";
+import { sendPushToAll, formatDay, todayOnCampus } from "../utils/pushNotifications.js";
 
 // Transport Admin console.
 //  - bus_fleet: the buses that may be scheduled
@@ -49,6 +50,26 @@ const readDays = (days) => {
     const list = (Array.isArray(days) ? days : String(days || "").split(",")).map((d) => String(d).trim()).filter(Boolean);
     if (!list.length || list.some((d) => !DAYS.includes(d))) return null;
     return [...new Set(list)];
+};
+
+// ---------- Notifications (fire-and-forget; a failed push never fails the save) ----------
+
+const notifyTransport = (title, body, date) => {
+    sendPushToAll({ type: "transport", title, body, data: { screen: "Bus", ...(date ? { date } : {}) } })
+        .catch((err) => console.error("Failed to send transport push", err));
+};
+
+// "Diwali" / "due to Diwali" -> " due to Diwali"
+const dueTo = (note) => (note ? ` due to ${note.replace(/^due to\s+/i, "")}` : "");
+
+const tripSignature = (trips) =>
+    JSON.stringify(trips.map((t) => [t.bus_number, t.start_time, t.Route, !!t.cancelled]).sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b))));
+
+const daysLabel = (days) => {
+    const set = [...days].sort((a, b) => DAYS.indexOf(a) - DAYS.indexOf(b)).join(",");
+    if (set === DAYS.slice(0, 5).join(",")) return "weekdays (Mon–Fri)";
+    if (set === DAYS.slice(5).join(",")) return "weekends (Sat–Sun)";
+    return days.map((d) => `${d}s`).join(", ");
 };
 
 // ---------- Fleet ----------
@@ -322,7 +343,7 @@ export const applyRegularUpload = async (req, res) => {
         const { rows, summary } = await validateBusRows(req.body.rows.map((r) => ({ row: r.row, bus_number: r.bus_number, start_time: r.start_time, Route: r.Route })), days);
         if (summary.errors) return fail(res, 400, `${summary.errors} row(s) still have errors. Fix the file and preview again.`);
         const trips = rows.map(({ bus_number, start_time, Route }) => ({ bus_number, start_time, Route }));
-        const { data: oldRows, error: e0 } = await supabase.from("Bus_Schedule").select("id, day_of_week, bus_number, start_time").in("day_of_week", days);
+        const { data: oldRows, error: e0 } = await supabase.from("Bus_Schedule").select("id, day_of_week, bus_number, start_time, Route").in("day_of_week", days);
         if (e0) throw e0;
         const { error: e1 } = await supabase.from("Bus_Schedule").delete().in("day_of_week", days);
         if (e1) throw e1;
@@ -333,6 +354,10 @@ export const applyRegularUpload = async (req, res) => {
         }
         await clearScheduleCache(days);
         await relinkDatePlans(oldRows, days);
+        const changed = days.some((d) => tripSignature(oldRows.filter((r) => r.day_of_week === d)) !== tripSignature(trips));
+        if (changed) {
+            notifyTransport("Bus schedule updated", `The regular bus schedule for ${daysLabel(days)} has been updated. Check the new timings.`);
+        }
         return res.status(200).json({ success: true, message: `${trips.length} trips now run on ${days.length === 1 ? days[0] + "s" : days.map((d) => d.slice(0, 3)).join(", ")}` });
     } catch (err) {
         return serverError(res, err);
@@ -450,11 +475,18 @@ export const saveDatePlan = async (req, res) => {
             return b && !t.cancelled && b.bus_number === t.bus_number && b.start_time === t.start_time && sameRoute(b.Route, t.Route);
         }) && new Set(trips.map((t) => t.base_id)).size === base.length;
 
+        // What the app showed for this date before, so re-saving the same plan doesn't notify again
+        const previous = await loadDatePlan(date);
+        const shouldNotify = date >= todayOnCampus();
+
         const { error: e1 } = await supabase.from("bus_day_trips").delete().eq("plan_date", date);
         if (e1) throw e1;
         if (isRegular) {
             const { error: e2 } = await supabase.from("bus_day_plans").delete().eq("plan_date", date);
             if (e2) throw e2;
+            if (previous && shouldNotify) {
+                notifyTransport("Bus schedule back to normal", `Buses on ${formatDay(date)} will run on the regular schedule.`, date);
+            }
             return res.status(200).json({ success: true, customized: false, message: "No differences from the regular schedule — this date follows it again." });
         }
 
@@ -463,6 +495,17 @@ export const saveDatePlan = async (req, res) => {
         for (let i = 0; i < trips.length; i += 500) {
             const { error: e4 } = await supabase.from("bus_day_trips").insert(trips.slice(i, i + 500));
             if (e4) throw e4;
+        }
+        const unchanged = previous && (previous.plan.note || null) === note && tripSignature(previous.trips) === tripSignature(trips);
+        if (shouldNotify && !unchanged) {
+            const cancelled = trips.filter((t) => t.cancelled).length;
+            const added = trips.filter((t) => !t.base_id && !t.cancelled).length;
+            const details = [cancelled && `${cancelled} trip${cancelled > 1 ? "s" : ""} cancelled`, added && `${added} extra trip${added > 1 ? "s" : ""}`].filter(Boolean).join(", ");
+            notifyTransport(
+                "Bus schedule changed",
+                `Bus schedule has been changed on ${formatDay(date)}${dueTo(note)}.${details ? ` ${details[0].toUpperCase()}${details.slice(1)}.` : ""} Check the new timings.`,
+                date
+            );
         }
         return res.status(200).json({ success: true, customized: true, message: `Saved ${trips.filter((t) => !t.cancelled).length} running trips for this day.` });
     } catch (err) {

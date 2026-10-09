@@ -36,7 +36,7 @@ export const protect = async (req, res, next) => {
     // 3. Check user validity from database
     const { data: userData, error: userError } = await supabase
       .from("User_Details")
-      .select(`id, email_id, is_Valid, Student_Details ("Roll Number", Hostel_Details)`)
+      .select(`id, email_id, is_Valid, Hostel, Student_Details ("Roll Number", Hostel_Details)`)
       .eq("id", decoded.id)
       .maybeSingle();
 
@@ -76,6 +76,11 @@ export const protect = async (req, res, next) => {
     if (decoded.user_type === "Student" && student) {
       req.user.rollnumber = student["Roll Number"];
       req.user.hostel = student.Hostel_Details;
+    }
+
+    // A Hostel Admin manages the hostel set on their User_Details row
+    if (decoded.user_type === "Hostel Admin") {
+      req.user.hostel = dbUser.Hostel || null;
     }
 
     next();

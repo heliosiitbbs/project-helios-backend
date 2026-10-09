@@ -1,4 +1,5 @@
 import supabase from "../config/Supabase.js";
+import { sendPushToAll, formatDay, todayOnCampus } from "../utils/pushNotifications.js";
 
 // Parses a Postgres "time with time zone" string (e.g. "08:00:00+00") into
 // a decimal hour (e.g. 8.5 for 8:30) so the frontend can position it on a
@@ -554,6 +555,26 @@ export const getAllHolidays = async (req, res) => {
 };
 
 // Admin: add a holiday (or holiday range) to Holiday_List.
+// Everyone hears about upcoming holidays being declared or called off (fire-and-forget)
+const notifyHoliday = (holiday, change) => {
+  if (holiday.end_date < todayOnCampus()) return;
+  const single = holiday.start_date === holiday.end_date;
+  const when = single
+    ? formatDay(holiday.start_date)
+    : `${formatDay(holiday.start_date)} – ${formatDay(holiday.end_date)}`;
+  const payload = change === "added"
+    ? {
+        title: "Holiday declared",
+        body: `${when} ${single ? "is" : "are"} declared ${single ? "a holiday" : "holidays"} for ${holiday.occasion}.`
+      }
+    : {
+        title: "Holiday cancelled",
+        body: `${when} ${single ? "is" : "are"} no longer ${single ? "a holiday" : "holidays"} (${holiday.occasion}). Classes run as usual.`
+      };
+  sendPushToAll({ ...payload, type: "timetable", data: { screen: "TimeTable" } })
+    .catch((err) => console.error("Failed to send holiday push", err));
+};
+
 export const addHoliday = async (req, res) => {
   try {
     const { occasion, start_date, end_date } = req.body;
@@ -590,6 +611,8 @@ export const addHoliday = async (req, res) => {
       return res.status(500).json({ success: false, message: "Error adding holiday" });
     }
 
+    notifyHoliday(holiday, "added");
+
     return res.status(200).json({
       success: true,
       message: "Holiday added successfully",
@@ -620,6 +643,8 @@ export const deleteHoliday = async (req, res) => {
     if (!deleted || deleted.length === 0) {
       return res.status(404).json({ success: false, message: "Holiday not found" });
     }
+
+    notifyHoliday(deleted[0], "removed");
 
     return res.status(200).json({ success: true, message: "Holiday deleted successfully" });
   } catch (err) {

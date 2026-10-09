@@ -1,5 +1,6 @@
 import xlsx from "xlsx";
 import supabase from "../config/Supabase.js";
+import { sendPushToUsers } from "../utils/pushNotifications.js";
 
 // Timetable editing for the Time Table Admin console (Subject_Timings).
 // Excel uploads are two-step: /preview parses + validates + diffs without
@@ -245,6 +246,53 @@ const validateRows = async (rawRows) => {
   return { rows, diff, clashes, summary };
 };
 
+// ---------- notifications ----------
+
+// code -> user ids of students registered for that subject in their current semester
+const studentsTaking = async (codes) => {
+  const regs = [];
+  for (let i = 0; i < codes.length; i += 300) {
+    const { data, error } = await supabase
+      .from("Subject_Registrations")
+      .select('student_id, semester, "subject code"')
+      .in("subject code", codes.slice(i, i + 300));
+    if (error) throw error;
+    regs.push(...data);
+  }
+  const rolls = [...new Set(regs.map((r) => r.student_id))];
+  const students = new Map();
+  for (let i = 0; i < rolls.length; i += 300) {
+    const { data, error } = await supabase
+      .from("Student_Details")
+      .select('"Roll Number", User_code, current_semester')
+      .in("Roll Number", rolls.slice(i, i + 300));
+    if (error) throw error;
+    data.forEach((st) => students.set(st["Roll Number"], st));
+  }
+  const byCode = new Map(codes.map((c) => [c, new Set()]));
+  regs.forEach((r) => {
+    const st = students.get(r.student_id);
+    // Old registrations from past semesters stay in the table; skip them
+    if (st?.User_code && Number(st.current_semester) === Number(r.semester)) byCode.get(r["subject code"])?.add(st.User_code);
+  });
+  return byCode;
+};
+
+const slotText = (t) => `${t.day} ${t.start}–${t.end}${t.location ? ` (${t.location})` : ""}`;
+
+// Fire-and-forget: tell a subject's students about one class change
+const notifySubjectChange = (code, name, body) => {
+  studentsTaking([code])
+    .then((byCode) => sendPushToUsers([...byCode.get(code)].map((userId) => ({
+      userId,
+      type: "timetable",
+      title: `Timetable change: ${code}`,
+      body: `${name}: ${body}`,
+      data: { screen: "TimeTable" }
+    }))))
+    .catch((err) => console.error("Failed to send timetable push", err));
+};
+
 // ---------- endpoints ----------
 
 // GET /api/timetable/admin/branches -> B.Tech branches (the ones with curricula)
@@ -369,7 +417,9 @@ export const addAdminTiming = async (req, res) => {
     const { data, error } = await supabase.from("Subject_Timings").insert([{ subject_code: code, ...row }]).select().single();
     if (error) throw error;
     const clashes = await findClashes(data, data.id);
-    return res.status(201).json({ success: true, timing: shapeTiming(data, subjects), clashes });
+    const added = shapeTiming(data, subjects);
+    notifySubjectChange(code, added.subject_name, `new class on ${slotText(added)}.`);
+    return res.status(201).json({ success: true, timing: added, clashes });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ success: false, message: "Server Error" });
@@ -382,12 +432,23 @@ export const updateAdminTiming = async (req, res) => {
     const { row, error: invalid } = readSlotBody(req.body);
     if (invalid) return res.status(400).json({ success: false, message: invalid });
 
+    const { data: before, error: e0 } = await supabase.from("Subject_Timings").select("*").eq("id", req.params.id).maybeSingle();
+    if (e0) throw e0;
+    if (!before) return res.status(404).json({ success: false, message: "Class time not found" });
     const { data, error } = await supabase.from("Subject_Timings").update(row).eq("id", req.params.id).select().maybeSingle();
     if (error) throw error;
     if (!data) return res.status(404).json({ success: false, message: "Class time not found" });
     const subjects = await fetchSubjects([data.subject_code]);
     const clashes = await findClashes(data, data.id);
-    return res.status(200).json({ success: true, timing: shapeTiming(data, subjects), clashes });
+    const from = shapeTiming(before, subjects);
+    const to = shapeTiming(data, subjects);
+    if (slotText(from) !== slotText(to)) {
+      const sameTime = from.day === to.day && from.start === to.start && from.end === to.end;
+      notifySubjectChange(data.subject_code, to.subject_name, sameTime
+        ? `${from.day} ${from.start}–${from.end} class moved to room ${to.location || "TBA"}.`
+        : `${from.day} ${from.start}–${from.end} class moved to ${slotText(to)}.`);
+    }
+    return res.status(200).json({ success: true, timing: to, clashes });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ success: false, message: "Server Error" });
@@ -400,6 +461,12 @@ export const deleteAdminTiming = async (req, res) => {
     const { data, error } = await supabase.from("Subject_Timings").delete().eq("id", req.params.id).select();
     if (error) throw error;
     if (!data.length) return res.status(404).json({ success: false, message: "Class time not found" });
+    fetchSubjects([data[0].subject_code])
+      .then((subjects) => {
+        const gone = shapeTiming(data[0], subjects);
+        notifySubjectChange(gone.subject_code, gone.subject_name, `${gone.day} ${gone.start}–${gone.end} class has been removed from the timetable.`);
+      })
+      .catch((err) => console.error("Failed to send timetable push", err));
     return res.status(200).json({ success: true });
   } catch (err) {
     console.error(err);
@@ -478,6 +545,27 @@ export const previewTimetableUpload = async (req, res) => {
   }
 };
 
+// One notification per student, listing every one of their subjects whose times changed
+const notifyUploadChanges = (changed) => {
+  if (!changed.length) return;
+  const names = new Map(changed.map((d) => [d.subject_code, d.subject_name]));
+  studentsTaking([...names.keys()])
+    .then((byCode) => {
+      const perStudent = new Map();
+      byCode.forEach((ids, code) => ids.forEach((id) => perStudent.set(id, [...(perStudent.get(id) || []), code])));
+      return sendPushToUsers([...perStudent].map(([userId, codes]) => ({
+        userId,
+        type: "timetable",
+        title: "Timetable updated",
+        body: codes.length === 1
+          ? `Class timings for ${codes[0]} ${names.get(codes[0])} have changed. Check your timetable.`
+          : `Class timings changed for ${codes.slice(0, 3).join(", ")}${codes.length > 3 ? ` and ${codes.length - 3} more` : ""}. Check your timetable.`,
+        data: { screen: "TimeTable" }
+      })));
+    })
+    .catch((err) => console.error("Failed to send timetable push", err));
+};
+
 // POST /api/timetable/admin/timings/apply  { rows: [...] } - rows from the preview
 export const applyTimetableUpload = async (req, res) => {
   try {
@@ -486,7 +574,7 @@ export const applyTimetableUpload = async (req, res) => {
     if (input.length > 5000) return res.status(400).json({ success: false, message: "Too many rows (max 5000)" });
 
     // Never trust the client's statuses: validate again
-    const { rows, summary } = await validateRows(input.map((r) => ({
+    const { rows, diff, summary } = await validateRows(input.map((r) => ({
       row: r.row,
       subject_code: r.subject_code,
       subject_name: r.subject_name,
@@ -524,6 +612,8 @@ export const applyTimetableUpload = async (req, res) => {
       const { error } = await supabase.from("Subject_Timings").insert(inserts.slice(i, i + 500));
       if (error) throw error;
     }
+
+    notifyUploadChanges(diff.filter((d) => d.change !== "unchanged"));
 
     return res.status(200).json({
       success: true,

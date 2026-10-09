@@ -105,9 +105,9 @@ export const createNews = async (req, res) => {
     if (data.status === "published") {
       sendPushToAll({
         type: "news",
-        title: "Campus News",
+        title: "New post from ORACLE",
         body: data.title,
-        data: { screen: "CampusNews" }
+        data: { screen: "News" }
       }).catch((err) => console.error("Failed to send news push", err));
     }
 
@@ -233,9 +233,9 @@ export const updateNews = async (req, res) => {
     if (status === "published" && !wasPublished && data?.[0]) {
       sendPushToAll({
         type: "news",
-        title: "Campus News",
+        title: "New post from ORACLE",
         body: data[0].title,
-        data: { screen: "CampusNews" }
+        data: { screen: "News" }
       }).catch((err) => console.error("Failed to send news push", err));
     }
 
