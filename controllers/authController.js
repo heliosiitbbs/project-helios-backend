@@ -12,16 +12,19 @@ const PHONE_REGEX = /^[6-9]\d{9}$/;
 // Placeholder some old auto-created accounts were given
 const PLACEHOLDER_PHONE = "9876543210";
 // Students sign in on the app's 6-digit PIN keypad; staff accounts use passwords
-const PIN_ROLES = ["Student"];
+const PIN_ROLES = ["Student", "Visitor"];
 
 // Profile fields a user must fill before using the app
-const missingProfileFields = (user) => [
-    !String(user.display_name || "").trim() && "display_name",
-    (!PHONE_REGEX.test(user.phone_number || "") || user.phone_number === PLACEHOLDER_PHONE) && "phone_number",
-    !String(user.blood_group || "").trim() && "blood_group",
-    !user.photoUrl && "photo",
-    !user.password && "pin"
-].filter(Boolean);
+const missingProfileFields = (user) => {
+    const isVisitor = user["User Type"] === "Visitor";
+    return [
+        !String(user.display_name || "").trim() && "display_name",
+        (!PHONE_REGEX.test(user.phone_number || "") || user.phone_number === PLACEHOLDER_PHONE) && "phone_number",
+        !isVisitor && !String(user.blood_group || "").trim() && "blood_group",
+        !isVisitor && !user.photoUrl && "photo",
+        !user.password && "pin"
+    ].filter(Boolean);
+};
 
 const profileSnapshot = (user) => ({
     name: user["User Name"] || "",
@@ -588,3 +591,4 @@ export const completeProfile = async (req, res) => {
         res.status(500).json({ success: false, message: "Server Error" });
     }
 };
+
