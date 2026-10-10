@@ -39,6 +39,7 @@ import notificationRoutes from "./routes/notificationRoutes.js";
 import gateRoutes from "./routes/gateRoutes.js";
 import bugRoutes from "./routes/bugRoutes.js";
 import cabSharingRoutes from "./routes/cabSharingRoutes.js";
+import shareRoutes from "./routes/shareRoutes.js";
 import schedulerRoutes from "./routes/schedulerRoutes.js";
 import { initScheduler } from "./jobs/cronScheduler.js";
 import visitorRoutes from "./routes/visitorRoutes.js";
@@ -103,6 +104,8 @@ app.use("/api/notifications", notificationRoutes);
 app.use("/api/gate", gateRoutes);
 app.use("/api/bugs", bugRoutes);
 app.use("/api/cab-sharing", cabSharingRoutes);
+// Public pages behind links shared from the app (e.g. /r/ride/12)
+app.use("/r", shareRoutes);
 app.use("/api/scheduler", schedulerRoutes);
 app.use("/api/visitors", visitorRoutes);
 
