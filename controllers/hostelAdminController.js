@@ -309,7 +309,7 @@ export const saveHostelMenu = async (req, res) => {
         const stale = compulsoryChanged ? DAYS : [...changedDays];
         if (stale.length) {
             try {
-                await redis.del(...stale.map((d) => `mess-menu:${hostel}:${d}`));
+                await redis.del(...stale.map((d) => `mess-menu:v2:${hostel}:${d}`));
             } catch (err) {
                 console.error("Mess menu cache clear failed:", err.message);
             }

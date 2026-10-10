@@ -46,7 +46,8 @@ export const getMenu = async (req, res) => {
         }
 
         // Step 5: Create Redis cache key
-        const cacheKey = `mess-menu:${hostelName}:${dayName}`;
+        // (v2: entries cached before snacks were added only had 3 meals)
+        const cacheKey = `mess-menu:v2:${hostelName}:${dayName}`;
 
         // Step 6: Check Redis first
         const cachedMenu = await redis.get(cacheKey);
@@ -77,7 +78,9 @@ export const getMenu = async (req, res) => {
         if (compulsoryError) throw compulsoryError;
 
         // Step 9: Prepare final response format
-        const meals = ["breakfast", "lunch", "dinner"];
+        // Snacks only for hostels that serve them (RHR doesn't)
+        const servesSnacks = [...menuData, ...compulsoryData].some((item) => item.type_of_meal?.toLowerCase() === "snacks");
+        const meals = servesSnacks ? ["breakfast", "lunch", "snacks", "dinner"] : ["breakfast", "lunch", "dinner"];
 
         const finalMenu = meals.map((meal) => {
             const menuMeal = menuData.find(
@@ -163,7 +166,9 @@ export const getFullWeekMenuByHostel = async (req, res) => {
             "Saturday"
         ];
 
-        const meals = ["breakfast", "lunch", "dinner"];
+        // Snacks only for hostels that serve them (RHR doesn't)
+        const servesSnacks = [...menuData, ...compulsoryData].some((item) => item.type_of_meal?.toLowerCase() === "snacks");
+        const meals = servesSnacks ? ["breakfast", "lunch", "snacks", "dinner"] : ["breakfast", "lunch", "dinner"];
 
         // Step 5: Format compulsory separately
         const compulsory = meals.map((meal) => {
@@ -263,7 +268,7 @@ export const editMessFoodItems = async (req, res) => {
             ];
 
             const cacheKeys = days.map(
-                (day) => `mess-menu:${hostel_name}:${day}`
+                (day) => `mess-menu:v2:${hostel_name}:${day}`
             );
 
             await Promise.all(cacheKeys.map((key) => redis.del(key)));
@@ -305,7 +310,7 @@ export const editMessFoodItems = async (req, res) => {
         }
 
         // Step 6: Delete Redis cache for that specific hostel and day
-        const cacheKey = `mess-menu:${hostel_name}:${day_of_the_week}`;
+        const cacheKey = `mess-menu:v2:${hostel_name}:${day_of_the_week}`;
 
         await redis.del(cacheKey);
 
@@ -588,7 +593,7 @@ export const uploadFullMessMenu = async (req, res) => {
         }
 
         const cacheKeys = [...affectedDays].map(
-            (day) => `mess-menu:${hostel_name}:${day}`
+            (day) => `mess-menu:v2:${hostel_name}:${day}`
         );
 
         await Promise.all(cacheKeys.map((key) => redis.del(key)));
