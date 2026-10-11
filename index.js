@@ -44,10 +44,18 @@ import schedulerRoutes from "./routes/schedulerRoutes.js";
 import { initScheduler } from "./jobs/cronScheduler.js";
 import visitorRoutes from "./routes/visitorRoutes.js";
 
-const allowedOrigins = (process.env.CORS_ALLOWED_ORIGINS || "")
-    .split(",")
-    .map((origin) => origin.trim())
-    .filter(Boolean);
+// Always allowed, on top of any extra origins in CORS_ALLOWED_ORIGINS (comma separated)
+const DEFAULT_ALLOWED_ORIGINS = [
+    "https://helios-admin-frontend.vercel.app", // admin dashboard
+];
+
+const allowedOrigins = [
+    ...DEFAULT_ALLOWED_ORIGINS,
+    ...(process.env.CORS_ALLOWED_ORIGINS || "")
+        .split(",")
+        .map((origin) => origin.trim())
+        .filter(Boolean),
+];
 
 const corsOptions = {
     origin: (origin, callback) => {
