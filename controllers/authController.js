@@ -14,14 +14,14 @@ const PLACEHOLDER_PHONE = "9876543210";
 // Students sign in on the app's 6-digit PIN keypad; staff accounts use passwords
 const PIN_ROLES = ["Student", "Visitor"];
 
-// Profile fields a user must fill before using the app
+// Profile fields a user must fill before using the app. The profile photo is
+// optional: it can be added on the first-time form or later in Edit Profile.
 const missingProfileFields = (user) => {
     const isVisitor = user["User Type"] === "Visitor";
     return [
         !String(user.display_name || "").trim() && "display_name",
         (!PHONE_REGEX.test(user.phone_number || "") || user.phone_number === PLACEHOLDER_PHONE) && "phone_number",
         !isVisitor && !String(user.blood_group || "").trim() && "blood_group",
-        !isVisitor && !user.photoUrl && "photo",
         !user.password && "pin"
     ].filter(Boolean);
 };
@@ -562,7 +562,7 @@ export const completeProfile = async (req, res) => {
         // Everything still missing after this request must have been provided
         const stillMissing = missingProfileFields({ ...user, ...update });
         if (stillMissing.length) {
-            const labels = { display_name: "your name", phone_number: "a phone number", blood_group: "your blood group", photo: "a profile photo", pin: "a 6-digit PIN" };
+            const labels = { display_name: "your name", phone_number: "a phone number", blood_group: "your blood group", pin: "a 6-digit PIN" };
             return fail(`Please add ${stillMissing.map((f) => labels[f]).join(", ")}.`);
         }
 

@@ -2,6 +2,12 @@ import supabase from "../config/Supabase.js";
 
 const EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send";
 
+// Every push shows as a heads-up banner at the top of the phone: the app creates
+// this Android channel with high importance (src/notifications/pushRegistration.js).
+// Without a channelId, Android uses Expo's default channel, which only puts the
+// notification silently in the tray.
+const PUSH_DEFAULTS = { channelId: "alerts", priority: "high", sound: "default" };
+
 // Expo accepts up to 100 messages per request. Also prunes tokens that come
 // back as "DeviceNotRegistered" (uninstalled app, etc.) so dead tokens don't
 // pile up and get retried forever.
@@ -9,7 +15,7 @@ async function sendExpoPush(messages) {
     if (messages.length === 0) return;
 
     for (let i = 0; i < messages.length; i += 100) {
-        const chunk = messages.slice(i, i + 100);
+        const chunk = messages.slice(i, i + 100).map((m) => ({ ...PUSH_DEFAULTS, ...m }));
 
         try {
             const res = await fetch(EXPO_PUSH_URL, {
@@ -22,6 +28,15 @@ async function sendExpoPush(messages) {
             });
 
             const result = await res.json();
+
+            // Surface delivery problems (e.g. InvalidCredentials when FCM isn't set
+            // up for the Expo project) instead of failing silently
+            if (result.errors) console.error("Expo push request rejected", JSON.stringify(result.errors));
+            (result.data || []).forEach((entry) => {
+                if (entry.status === "error" && entry.details?.error !== "DeviceNotRegistered") {
+                    console.error("Expo push failed:", entry.details?.error || "", entry.message);
+                }
+            });
 
             const invalidTokens = (result.data || [])
                 .map((entry, idx) =>
