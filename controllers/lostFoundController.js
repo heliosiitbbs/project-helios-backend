@@ -733,7 +733,7 @@ export const sendHandoverOTP = async (req, res) => {
     // otherwise stall the response until the platform's own gateway timeout
     // kills it and returns a raw 502 instead of a real error.
     transporter.sendMail({
-      from: `"Helios Lost & Found" <${process.env.SMTP_USER || "no-reply@helios.iitbbs.ac.in"}>`,
+      from: `"Helios Lost & Found" <${process.env.SMTP_FROM || process.env.SMTP_USER || "no-reply@helios.iitbbs.ac.in"}>`,
       to: email,
       subject: "Confirm Handover of Your Lost Item - Helios IIT BBS",
       text: `Your handover verification code is: ${code}. Share this with the finder to confirm receipt.`,

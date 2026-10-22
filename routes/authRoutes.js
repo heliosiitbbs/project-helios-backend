@@ -8,7 +8,8 @@ import {
     sendAuthVerification,
     verifyAuthCode,
     registerOrUpdateUserPin,
-    completeProfile
+    completeProfile,
+    refreshSession
 } from "../controllers/authController.js";
 
 const router = express.Router();
@@ -64,6 +65,12 @@ router.post(
     "/complete-profile",
     uploadProfilePhoto.single("photo"),
     completeProfile
+);
+
+// App session renewal (needs a still-valid app session token)
+router.post(
+    "/refresh",
+    refreshSession
 );
 
 export default router;

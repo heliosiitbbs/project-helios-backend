@@ -1,4 +1,75 @@
 import supabase from "../config/Supabase.js";
+import nodemailer from "nodemailer";
+
+const escapeHtml = (text) =>
+    String(text ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+
+// Emails the Hostel Admin(s) of the student's hostel that a new grievance came in.
+// Fire-and-forget from uploadGrievance: a mail problem never fails the submission.
+const notifyHostelAdmins = async (grievance, studentRollNo) => {
+    if (!process.env.SMTP_USER || !process.env.SMTP_PASS) return;
+
+    const { data: student, error: studentError } = await supabase
+        .from("Student_Details")
+        .select('"Roll Number", "Room No", Hostel_Details, User_Details("User Name", display_name)')
+        .eq("Roll Number", studentRollNo)
+        .maybeSingle();
+    if (studentError) throw studentError;
+    const hostel = student?.Hostel_Details;
+    if (!hostel) return;
+
+    const { data: admins, error: adminError } = await supabase
+        .from("User_Details")
+        .select("email_id")
+        .eq("User Type", "Hostel Admin")
+        .eq("Hostel", hostel)
+        .eq("is_Valid", true);
+    if (adminError) throw adminError;
+    const recipients = (admins || []).map((a) => a.email_id).filter(Boolean);
+    if (!recipients.length) {
+        console.warn(`New grievance in ${hostel}, but no active Hostel Admin account has that hostel - no email sent.`);
+        return;
+    }
+
+    const name = student.User_Details?.["User Name"] || student.User_Details?.display_name || "A student";
+    const type = grievance["Grievance Type"] || "General";
+    const roomNo = student["Room No"] ? String(student["Room No"]).trim() : "";
+    const dashboard = process.env.ADMIN_DASHBOARD_URL || "https://helios-admin-frontend.vercel.app";
+
+    const transporter = nodemailer.createTransport({
+        host: process.env.SMTP_HOST || "smtp.gmail.com",
+        port: Number(process.env.SMTP_PORT) || 587,
+        secure: Number(process.env.SMTP_PORT) === 465,
+        auth: {
+            user: process.env.SMTP_USER,
+            pass: process.env.SMTP_PASS.replace(/\s+/g, ""),
+        },
+        // Fail fast where outbound SMTP is silently dropped (see authController)
+        connectionTimeout: 8000,
+        greetingTimeout: 8000,
+        socketTimeout: 8000,
+    });
+
+    await transporter.sendMail({
+        from: `"Helios Grievances" <${process.env.SMTP_FROM || process.env.SMTP_USER || "no-reply@helios.iitbbs.ac.in"}>`,
+        to: recipients,
+        subject: `New ${type} grievance - ${hostel} - Helios IIT BBS`,
+        // Room No: / Name: / Grievance: / link - room only when known
+        text:
+            (roomNo ? `Room No: ${roomNo}\n` : "") +
+            `Name: ${name}\n` +
+            `Grievance: ${grievance.description}\n\n` +
+            `In order to allot this to someone, please follow the link: ${dashboard}`,
+        html: `
+            <div style="font-family: Arial, sans-serif; max-width: 520px; color: #181925; font-size: 15px; line-height: 1.6;">
+                ${roomNo ? `<p style="margin: 0;"><b>Room No:</b> ${escapeHtml(roomNo)}</p>` : ""}
+                <p style="margin: 0;"><b>Name:</b> ${escapeHtml(name)}</p>
+                <p style="margin: 0; white-space: pre-wrap;"><b>Grievance:</b> ${escapeHtml(grievance.description)}</p>
+                <p style="margin: 20px 0 0;">In order to allot this to someone, please follow the link: <a href="${escapeHtml(dashboard)}">${escapeHtml(dashboard)}</a></p>
+            </div>
+        `,
+    });
+};
 
 // 1. GET ALL UNRESOLVED GRIEVANCES
 export const getUnresolvedGrievances = async (req, res) => {
@@ -81,6 +152,8 @@ export const uploadGrievance = async (req, res) => {
             .single();
 
         if (error) throw error;
+
+        notifyHostelAdmins(data, student_id).catch((err) => console.error("Failed to email hostel admins about grievance:", err.message));
 
         return res.status(201).json({ success: true, message: "Grievance submitted successfully.", grievance: data });
     } catch (err) {

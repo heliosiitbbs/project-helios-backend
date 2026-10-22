@@ -16,13 +16,13 @@ const PIN_ROLES = ["Student", "Visitor"];
 
 // Profile fields a user must fill before using the app. The profile photo is
 // optional: it can be added on the first-time form or later in Edit Profile.
+// The app signs everyone in with Google, so no PIN is needed.
 const missingProfileFields = (user) => {
     const isVisitor = user["User Type"] === "Visitor";
     return [
         !String(user.display_name || "").trim() && "display_name",
         (!PHONE_REGEX.test(user.phone_number || "") || user.phone_number === PLACEHOLDER_PHONE) && "phone_number",
-        !isVisitor && !String(user.blood_group || "").trim() && "blood_group",
-        !user.password && "pin"
+        !isVisitor && !String(user.blood_group || "").trim() && "blood_group"
     ].filter(Boolean);
 };
 
@@ -63,8 +63,13 @@ const readAnyToken = (req) => {
     }
 };
 
+// App sessions (Google sign-in) last 30 days and are renewed each time the app
+// opens (/refresh), so people stay signed in until they log out. Password
+// logins (admin dashboard) keep short 1-hour sessions that can't be renewed.
+const APP_SESSION_TTL = "30d";
+
 // Session JWT + the response fields the frontends expect after a login
-const issueSession = async (user) => {
+const issueSession = async (user, { app = false } = {}) => {
     let payload;
     if (user["User Type"] === "Student") {
         const { data: studentDetails } = await supabase
@@ -87,7 +92,8 @@ const issueSession = async (user) => {
             e_mail: user["email_id"]
         };
     }
-    const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: "1h" });
+    if (app) payload.app = true;
+    const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: app ? APP_SESSION_TTL : "1h" });
     return { token, userType: user["User Type"] };
 };
 
@@ -228,8 +234,8 @@ export const checkAccountStatus = async (req, res) => {
 
 // ---------- 3. VERIFY GOOGLE SIGN-IN ----------
 // Google vouches for the email. Only accounts already in User_Details with
-// is_Valid = true may continue. Returns a setup token plus what's missing, so the
-// app can go straight to the PIN keypad or to the profile form first.
+// is_Valid = true may continue. A complete profile gets a 30-day app session
+// right away; otherwise a setup token for the first-time profile form.
 export const verifyGoogleSignIn = async (req, res) => {
     const { id_token: idToken } = req.body || {};
     if (!idToken) {
@@ -289,11 +295,22 @@ export const verifyGoogleSignIn = async (req, res) => {
         }
 
         const missing = missingProfileFields(user);
+
+        // Profile already complete: sign straight in, no further step
+        let session = null;
+        if (missing.length === 0) {
+            session = await issueSession(user, { app: true });
+            if (session.error) {
+                return res.status(404).json({ success: false, message: session.error });
+            }
+            await supabase.from("User_Details").update({ last_login_at: new Date().toISOString() }).eq("id", user.id);
+        }
+
         return res.json({
             success: true,
             email_id,
             userType: user["User Type"],
-            hasPin: !!user.password,
+            token: session?.token || null,
             profileComplete: missing.length === 0,
             missing,
             profile: {
@@ -357,7 +374,7 @@ export const sendAuthVerification = async (req, res) => {
 
         // Fire-and-forget: don't make the client wait on the SMTP round trip.
         transporter.sendMail({
-            from: `"Helios Auth" <${process.env.SMTP_USER || "no-reply@helios.iitbbs.ac.in"}>`,
+            from: `"Helios Auth" <${process.env.SMTP_FROM || process.env.SMTP_USER || "no-reply@helios.iitbbs.ac.in"}>`,
             to: email_id,
             subject: "Verify Your Email - Helios IIT BBS",
             text: `Your email verification code is: ${code}. This code is valid for 5 minutes.`,
@@ -498,10 +515,10 @@ export const registerOrUpdateUserPin = async (req, res) => {
     }
 };
 
-// ---------- 7. COMPLETE PROFILE (multipart: display_name, phone_number, blood_group, pin?, photo?) ----------
+// ---------- 7. COMPLETE PROFILE (multipart: display_name, phone_number, blood_group, photo?) ----------
 // Called with a setup token (first sign-in through Google) or a session token
-// (signed in with a PIN but details are still missing). Every missing field is
-// required; fields that are already filled may be left out.
+// (signed in but details are still missing). Every missing field is required;
+// fields that are already filled may be left out. Returns a 30-day app session.
 export const completeProfile = async (req, res) => {
     const decoded = readAnyToken(req);
     if (!decoded) {
@@ -536,16 +553,6 @@ export const completeProfile = async (req, res) => {
             update.blood_group = blood;
         }
 
-        const pin = String(body.pin ?? "");
-        if (pin) {
-            if (String(body.confirm_pin ?? "") !== pin) return fail("The two PINs don't match.");
-            const isPinRole = PIN_ROLES.includes(user["User Type"]);
-            if (isPinRole ? !/^\d{6}$/.test(pin) : pin.length < 6) {
-                return fail(isPinRole ? "The PIN must be exactly 6 digits." : "The password must be at least 6 characters.");
-            }
-            update.password = await bcrypt.hash(pin, 10);
-        }
-
         if (req.file) {
             const ext = (req.file.originalname.split(".").pop() || "jpg").toLowerCase();
             const filePath = `users/${user.email_id.replace(/[^a-zA-Z0-9]/g, "_")}_${Date.now()}.${ext}`;
@@ -562,7 +569,7 @@ export const completeProfile = async (req, res) => {
         // Everything still missing after this request must have been provided
         const stillMissing = missingProfileFields({ ...user, ...update });
         if (stillMissing.length) {
-            const labels = { display_name: "your name", phone_number: "a phone number", blood_group: "your blood group", pin: "a 6-digit PIN" };
+            const labels = { display_name: "your name", phone_number: "a phone number", blood_group: "your blood group" };
             return fail(`Please add ${stillMissing.map((f) => labels[f]).join(", ")}.`);
         }
 
@@ -571,7 +578,7 @@ export const completeProfile = async (req, res) => {
             if (error) throw error;
         }
 
-        const session = await issueSession(user);
+        const session = await issueSession(user, { app: true });
         if (session.error) {
             return res.status(404).json({ success: false, message: session.error });
         }
@@ -592,3 +599,30 @@ export const completeProfile = async (req, res) => {
     }
 };
 
+// ---------- 8. RENEW APP SESSION ----------
+// The app calls this each time it opens. A still-valid app session (from Google
+// sign-in) is swapped for a fresh 30-day one, so people stay signed in until
+// they log out. Disabled accounts (is_Valid false) are refused, signing them out.
+export const refreshSession = async (req, res) => {
+    const decoded = readAnyToken(req);
+    if (!decoded || decoded.purpose || !decoded.app) {
+        return res.status(401).json({ success: false, message: "Sign in again to continue." });
+    }
+
+    try {
+        const user = await findUserById(decoded.id);
+        if (!user || user.is_Valid !== true) {
+            return res.status(401).json({ success: false, message: "This account is not active." });
+        }
+
+        const session = await issueSession(user, { app: true });
+        if (session.error) {
+            return res.status(401).json({ success: false, message: session.error });
+        }
+
+        res.json({ success: true, token: session.token, userType: session.userType, email_id: user.email_id });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ success: false, message: "Server Error" });
+    }
+};
