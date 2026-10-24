@@ -18,11 +18,12 @@ const PIN_ROLES = ["Student", "Visitor"];
 // optional: it can be added on the first-time form or later in Edit Profile.
 // The app signs everyone in with Google, so no PIN is needed.
 const missingProfileFields = (user) => {
-    const isVisitor = user["User Type"] === "Visitor";
+    // Visitors and the ORACLE team aren't asked for a blood group
+    const skipsBloodGroup = ["Visitor", "ORACLE Admin"].includes(user["User Type"]);
     return [
         !String(user.display_name || "").trim() && "display_name",
         (!PHONE_REGEX.test(user.phone_number || "") || user.phone_number === PLACEHOLDER_PHONE) && "phone_number",
-        !isVisitor && !String(user.blood_group || "").trim() && "blood_group"
+        !skipsBloodGroup && !String(user.blood_group || "").trim() && "blood_group"
     ].filter(Boolean);
 };
 

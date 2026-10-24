@@ -18,7 +18,7 @@ export const getPostComments = async (req, res) => {
 
         const token = authHeader.split(" ")[1];
 
-        jwt.verify(
+        const decoded = jwt.verify(
             token,
             process.env.JWT_SECRET
         );
@@ -43,10 +43,28 @@ export const getPostComments = async (req, res) => {
 
         if (error) throw error;
 
+        // Who wrote each comment (shown name) and which ones are the caller's own
+        const authorIds = [...new Set(data.map((c) => c.user_id).filter(Boolean))];
+        const authors = new Map();
+        if (authorIds.length) {
+            const { data: people, error: peopleError } = await supabase
+                .from("User_Details")
+                .select(`id, "User Name", display_name`)
+                .in("id", authorIds);
+            if (peopleError) throw peopleError;
+            people.forEach((p) => authors.set(p.id, p.display_name || p["User Name"] || "Student"));
+        }
+
+        const comments = data.map((c) => ({
+            ...c,
+            author: authors.get(c.user_id) || "Student",
+            is_mine: String(c.user_id) === String(decoded.id)
+        }));
+
         return res.status(200).json({
             success: true,
             postId: id,
-            comments: data
+            comments
         });
 
     } catch (err) {

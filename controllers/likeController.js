@@ -18,7 +18,7 @@ export const getPostLikes = async (req, res) => {
 
         const token = authHeader.split(" ")[1];
 
-        jwt.verify(
+        const decoded = jwt.verify(
             token,
             process.env.JWT_SECRET
         );
@@ -43,10 +43,22 @@ export const getPostLikes = async (req, res) => {
 
         if (error) throw error;
 
+        // Whether the caller has liked it, so the heart can start filled
+        const { data: mine, error: mineError } =
+            await supabase
+                .from("Post_Likes")
+                .select("post_id")
+                .eq("post_id", id)
+                .eq("user_id", decoded.id)
+                .maybeSingle();
+
+        if (mineError) throw mineError;
+
         return res.status(200).json({
             success: true,
             postId: id,
-            likes: count
+            likes: count,
+            liked: !!mine
         });
 
     } catch (err) {

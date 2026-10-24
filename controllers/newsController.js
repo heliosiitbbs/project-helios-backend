@@ -65,6 +65,34 @@ export const getNews = async (req, res) => {
   }
 };
 
+// Upload a post image (multipart field "photo") and return its public URL;
+// the app then sends that URL in the post's `photos` array
+export const uploadNewsPhoto = async (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ success: false, message: "An image file is required" });
+  }
+
+  try {
+    const ext = (req.file.originalname.split(".").pop() || "jpg").toLowerCase();
+    const filePath = `posts/${Date.now()}.${ext}`;
+
+    const { error } = await supabase.storage
+      .from("campus-news")
+      .upload(filePath, req.file.buffer, { contentType: req.file.mimetype });
+
+    if (error) {
+      console.error(error);
+      return res.status(500).json({ success: false, message: "Error uploading image" });
+    }
+
+    const { data } = supabase.storage.from("campus-news").getPublicUrl(filePath);
+    return res.status(201).json({ success: true, url: data.publicUrl });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ success: false, message: "Server Error" });
+  }
+};
+
 // Create a news post
 export const createNews = async (req, res) => {
   const { title, category, subject, photos, writer_name, writer_role, writer_profile_photo, status } = req.body;
