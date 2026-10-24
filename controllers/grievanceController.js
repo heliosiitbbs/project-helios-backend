@@ -260,7 +260,25 @@ export const getGrievanceHistory = async (req, res) => {
             if (staffError) throw staffError;
             staff = new Map(members.map((m) => [m.id, m]));
         }
-        const history = data.map((g) => ({ ...g, staff: g.assigned_staff_id ? staff.get(g.assigned_staff_id) || null : null }));
+
+        // Progress notes the assigned staff left ("needs 2 more days"), newest first
+        let updates = [];
+        if (data.length) {
+            const { data: rows, error: updatesError } = await supabase
+                .from("grievance_updates")
+                .select("id, grievance_id, staff_name, note, created_at")
+                .in("grievance_id", data.map((g) => g.id))
+                .order("created_at", { ascending: false });
+            // Notes are a bonus - never let them stop the student seeing their own grievances
+            if (updatesError) console.error("Could not load grievance updates:", updatesError.message);
+            else updates = rows;
+        }
+
+        const history = data.map((g) => ({
+            ...g,
+            staff: g.assigned_staff_id ? staff.get(g.assigned_staff_id) || null : null,
+            updates: updates.filter((u) => u.grievance_id === g.id)
+        }));
 
         return res.status(200).json({ success: true, count: history.length, history });
     } catch (err) {

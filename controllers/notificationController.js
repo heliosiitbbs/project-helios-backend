@@ -69,6 +69,33 @@ export const getMyNotifications = async (req, res) => {
     }
 };
 
+// POST /api/notifications/clear  { ids: [] } - removes the caller's notifications they have just seen
+export const clearNotifications = async (req, res) => {
+    try {
+        const { ids } = req.body;
+
+        if (!Array.isArray(ids) || ids.length === 0) {
+            return res.status(400).json({ success: false, message: "ids must be a non-empty array" });
+        }
+
+        const { error } = await supabase
+            .from("notifications")
+            .delete()
+            .in("id", ids)
+            .eq("user_id", req.user.id);
+
+        if (error) {
+            console.error(error);
+            return res.status(500).json({ success: false, message: "Error clearing notifications" });
+        }
+
+        return res.status(200).json({ success: true, message: "Notifications cleared" });
+    } catch (err) {
+        console.error(err);
+        return res.status(500).json({ success: false, message: "Server Error" });
+    }
+};
+
 // DELETE /api/notifications/:id
 export const dismissNotification = async (req, res) => {
     try {

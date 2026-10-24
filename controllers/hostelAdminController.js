@@ -1,6 +1,9 @@
 import supabase from "../config/Supabase.js";
 import redis from "../config/redis.js";
+import bcrypt from "bcryptjs";
+import crypto from "crypto";
 import { sendPushToRollNumber } from "../utils/pushNotifications.js";
+import { normalizePhone } from "./staffController.js";
 
 // Hostel Admin console. Every endpoint is scoped to req.user.hostel (the
 // User_Details.Hostel of the signed-in admin, attached by `protect`):
@@ -29,12 +32,15 @@ export const requireHostel = (req, res, next) => {
 const GRIEVANCE_SELECT =
     '*, Student_Details!inner("Roll Number", "Room No", Hostel_Details, User_Details("User Name", display_name, phone_number))';
 
+// Never send the PIN hash to the browser; only whether a PIN has been set
+const publicStaff = ({ pin_hash, ...member }) => ({ ...member, has_pin: !!pin_hash });
+
 const loadStaff = async (ids) => {
     const list = [...new Set(ids.filter(Boolean))];
     if (!list.length) return new Map();
     const { data, error } = await supabase.from("hostel_staff").select("*").in("id", list);
     if (error) throw error;
-    return new Map(data.map((s) => [s.id, s]));
+    return new Map(data.map((s) => [s.id, publicStaff(s)]));
 };
 
 const shapeGrievance = (g, staff) => {
@@ -120,7 +126,7 @@ export const assignHostelGrievance = async (req, res) => {
             }).catch((err) => console.error("Failed to send grievance push", err));
         }
 
-        return res.status(200).json({ success: true, grievance: shapeGrievance(updated, new Map([[member.id, member]])) });
+        return res.status(200).json({ success: true, grievance: shapeGrievance(updated, new Map([[member.id, publicStaff(member)]])) });
     } catch (err) {
         return serverError(res, err);
     }
@@ -167,7 +173,7 @@ export const getHostelStaff = async (req, res) => {
         const { data, error } = await supabase.from("hostel_staff").select("*").eq("hostel_name", req.user.hostel).order("role").order("name");
         if (error) throw error;
         const counts = await openCounts(req.user.hostel);
-        return res.status(200).json({ success: true, staff: data.map((s) => ({ ...s, open_grievances: counts.get(s.id) || 0 })) });
+        return res.status(200).json({ success: true, staff: data.map((s) => ({ ...publicStaff(s), open_grievances: counts.get(s.id) || 0 })) });
     } catch (err) {
         return serverError(res, err);
     }
@@ -180,7 +186,7 @@ export const addHostelStaff = async (req, res) => {
         if (invalid) return fail(res, 400, invalid);
         const { data, error } = await supabase.from("hostel_staff").insert([{ ...row, hostel_name: req.user.hostel }]).select().single();
         if (error) throw error;
-        return res.status(201).json({ success: true, member: { ...data, open_grievances: 0 } });
+        return res.status(201).json({ success: true, member: { ...publicStaff(data), open_grievances: 0 } });
     } catch (err) {
         return serverError(res, err);
     }
@@ -201,7 +207,40 @@ export const updateHostelStaff = async (req, res) => {
             .maybeSingle();
         if (error) throw error;
         if (!data) return fail(res, 404, "Staff member not found");
-        return res.status(200).json({ success: true, member: data });
+        return res.status(200).json({ success: true, member: publicStaff(data) });
+    } catch (err) {
+        return serverError(res, err);
+    }
+};
+
+// POST /api/hostel-admin/staff/:id/pin { pin? } - sets the staff member's 6-digit sign-in PIN
+// (or resets it). Leave pin out to have one generated; a generated PIN is returned this once.
+export const setStaffPin = async (req, res) => {
+    try {
+        const given = req.body.pin === undefined || req.body.pin === "" ? null : String(req.body.pin);
+        if (given !== null && !/^\d{6}$/.test(given)) return fail(res, 400, "The PIN must be exactly 6 digits");
+
+        const { data: member, error } = await supabase
+            .from("hostel_staff")
+            .select("id, name, phone")
+            .eq("id", req.params.id)
+            .eq("hostel_name", req.user.hostel)
+            .maybeSingle();
+        if (error) throw error;
+        if (!member) return fail(res, 404, "Staff member not found");
+        if (!normalizePhone(member.phone)) return fail(res, 400, `Add ${member.name}'s phone number first - they sign in with it`);
+
+        const pin = given ?? String(crypto.randomInt(0, 1000000)).padStart(6, "0");
+        const { error: updateError } = await supabase
+            .from("hostel_staff")
+            .update({ pin_hash: await bcrypt.hash(pin, 10) })
+            .eq("id", member.id);
+        if (updateError) {
+            if (updateError.code === "23505") return fail(res, 409, "Another staff member already uses this phone number");
+            throw updateError;
+        }
+
+        return res.status(200).json({ success: true, ...(given === null ? { pin } : {}) });
     } catch (err) {
         return serverError(res, err);
     }

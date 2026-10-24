@@ -7,6 +7,7 @@ import {
     getHostelStaff,
     addHostelStaff,
     updateHostelStaff,
+    setStaffPin,
     deleteHostelStaff,
     getHostelMenu,
     saveHostelMenu
@@ -22,6 +23,7 @@ router.post("/grievances/:id/assign", assignHostelGrievance);
 router.get("/staff", getHostelStaff);
 router.post("/staff", addHostelStaff);
 router.patch("/staff/:id", updateHostelStaff);
+router.post("/staff/:id/pin", setStaffPin);
 router.delete("/staff/:id", deleteHostelStaff);
 
 router.get("/menu", getHostelMenu);
