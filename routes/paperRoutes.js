@@ -2,6 +2,7 @@ import express from "express";
 import {
   addPaper,
   getPapers,
+  getPaperSubjects,
   getPapersForReview,
   verifyPaper,
   deletePaper
@@ -13,6 +14,7 @@ const router = express.Router();
 
 router.post("/", protect, uploadPaper.single("paper"), addPaper);
 router.get("/", protect, getPapers);
+router.get("/subjects", protect, getPaperSubjects);
 
 const reviewers = authorize("ARP Admin", "Super Admin");
 router.get("/admin", protect, reviewers, getPapersForReview);

@@ -113,6 +113,26 @@ export const getPapers = async (req, res) => {
   }
 };
 
+// GET /api/papers/subjects -> every subject, for the contribute screen's picker
+export const getPaperSubjects = async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from("Subject_Details")
+      .select("subject_code, subject_name")
+      .order("subject_name");
+
+    if (error) {
+      console.error(error);
+      return res.status(500).json({ success: false, message: "Error fetching subjects" });
+    }
+
+    return res.status(200).json({ success: true, subjects: data });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ success: false, message: "Server Error" });
+  }
+};
+
 // GET /api/papers/admin?status=pending|verified
 export const getPapersForReview = async (req, res) => {
   try {
