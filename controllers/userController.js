@@ -365,7 +365,7 @@ export const changePin = async (req, res) => {
 };
 
 // "User Type" enum values managed from the admin dashboard's personnel page
-const ADMIN_ROLES = ["Super Admin", "Admin", "Transport Admin", "Time Table Admin", "ORACLE Admin", "Security Guard"];
+const ADMIN_ROLES = ["Super Admin", "Admin", "Transport Admin", "Time Table Admin", "ORACLE Admin", "Security Guard", "ARP Admin"];
 // Roles that sign in on the mobile app's 6-digit PIN keypad
 const PIN_ONLY_ROLES = ["Admin", "ORACLE Admin"];
 const ADMIN_COLUMNS = `id, "User Name", email_id, "User Type", is_Valid, phone_number, created_at`;

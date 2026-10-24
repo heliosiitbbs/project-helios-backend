@@ -57,7 +57,7 @@ export const addPaper = async (req, res) => {
       subject,
       type,
       contributor_name: contributor_name || req.user?.e_mail || "",
-      is_verified: true
+      is_verified: false
     };
 
     const { data, error } = await supabase
@@ -107,6 +107,96 @@ export const getPapers = async (req, res) => {
     }
 
     return res.status(200).json({ success: true, papers: data });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ success: false, message: "Server Error" });
+  }
+};
+
+// GET /api/papers/admin?status=pending|verified
+export const getPapersForReview = async (req, res) => {
+  try {
+    const verified = req.query.status === "verified";
+
+    const { data, error } = await supabase
+      .from("paper_details")
+      .select("*")
+      .eq("is_verified", verified)
+      .order("uploaded_at", { ascending: false });
+
+    if (error) {
+      console.error(error);
+      return res.status(500).json({ success: false, message: "Error fetching papers" });
+    }
+
+    return res.status(200).json({ success: true, papers: data });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ success: false, message: "Server Error" });
+  }
+};
+
+// PATCH /api/papers/admin/:id/verify
+export const verifyPaper = async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from("paper_details")
+      .update({ is_verified: true })
+      .eq("id", req.params.id)
+      .select("id");
+
+    if (error) {
+      console.error(error);
+      return res.status(500).json({ success: false, message: "Error verifying paper" });
+    }
+    if (!data || data.length === 0) {
+      return res.status(404).json({ success: false, message: "Paper not found" });
+    }
+
+    return res.status(200).json({ success: true, message: "Paper verified" });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ success: false, message: "Server Error" });
+  }
+};
+
+// DELETE /api/papers/admin/:id — removes the row and its stored file
+export const deletePaper = async (req, res) => {
+  try {
+    const { data: paper, error: findError } = await supabase
+      .from("paper_details")
+      .select("id, drive_link")
+      .eq("id", req.params.id)
+      .maybeSingle();
+
+    if (findError) {
+      console.error(findError);
+      return res.status(500).json({ success: false, message: "Error deleting paper" });
+    }
+    if (!paper) {
+      return res.status(404).json({ success: false, message: "Paper not found" });
+    }
+
+    const { error: deleteError } = await supabase
+      .from("paper_details")
+      .delete()
+      .eq("id", paper.id);
+
+    if (deleteError) {
+      console.error(deleteError);
+      return res.status(500).json({ success: false, message: "Error deleting paper" });
+    }
+
+    // Storage cleanup must never fail the delete itself
+    const marker = `/${PAPERS_BUCKET}/`;
+    const idx = paper.drive_link?.indexOf(marker) ?? -1;
+    if (idx !== -1) {
+      const objectPath = decodeURIComponent(paper.drive_link.slice(idx + marker.length));
+      const { error: storageError } = await supabase.storage.from(PAPERS_BUCKET).remove([objectPath]);
+      if (storageError) console.warn("Paper file cleanup failed:", storageError.message);
+    }
+
+    return res.status(200).json({ success: true, message: "Paper removed" });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ success: false, message: "Server Error" });

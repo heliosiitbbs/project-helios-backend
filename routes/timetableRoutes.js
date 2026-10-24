@@ -11,6 +11,8 @@ import {
 } from "../controllers/timetableController.js";
 import {
   getTimetableBranches,
+  getAdminCurriculum,
+  saveAdminCurriculum,
   getAdminTimings,
   addAdminTiming,
   updateAdminTiming,
@@ -35,7 +37,10 @@ router.delete("/holidays/:id", protect, holidayAdminRoles, deleteHoliday);
 
 // Timetable editing (Time Table Admin console)
 const timetableAdminRoles = authorize("Super Admin", "Time Table Admin");
-router.get("/admin/branches", protect, timetableAdminRoles, getTimetableBranches);
+router.get("/admin/branches", protect, authorize("Super Admin", "Time Table Admin", "ARP Admin"), getTimetableBranches);
+// ARP Admin reads the curriculum for the paper coverage grid; only Super Admin edits it
+router.get("/admin/curriculum", protect, authorize("Super Admin", "ARP Admin"), getAdminCurriculum);
+router.put("/admin/curriculum", protect, authorize("Super Admin"), saveAdminCurriculum);
 router.get("/admin/timings", protect, timetableAdminRoles, getAdminTimings);
 router.get("/admin/timings/export", protect, timetableAdminRoles, exportAdminTimings);
 router.post("/admin/timings/preview", protect, timetableAdminRoles, uploadSpreadsheet.single("file"), previewTimetableUpload);

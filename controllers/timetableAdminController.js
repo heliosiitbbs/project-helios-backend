@@ -307,6 +307,89 @@ export const getTimetableBranches = async (req, res) => {
   }
 };
 
+// GET /api/timetable/admin/curriculum?branch_id=1&semester=5 -> editable slots + subject catalog
+export const getAdminCurriculum = async (req, res) => {
+  try {
+    const { branch_id, semester } = req.query;
+    if (!branch_id || !semester) {
+      return res.status(400).json({ success: false, message: "branch_id and semester are required" });
+    }
+
+    const [slotsRes, catalogRes] = await Promise.all([
+      supabase
+        .from("curriculum_slots")
+        .select("id, slot_type, slot_label, curriculum_slot_options(subject_code)")
+        .eq("branch_id", branch_id)
+        .eq("semester", semester)
+        .order("id"),
+      supabase.from("Subject_Details").select("subject_code, subject_name").order("subject_code")
+    ]);
+    if (slotsRes.error) throw slotsRes.error;
+    if (catalogRes.error) throw catalogRes.error;
+
+    const slots = slotsRes.data.map((s) => ({
+      slot_type: s.slot_type,
+      slot_label: s.slot_label,
+      codes: s.curriculum_slot_options.map((o) => o.subject_code)
+    }));
+    return res.status(200).json({ success: true, slots, catalog: catalogRes.data });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ success: false, message: "Server Error" });
+  }
+};
+
+// PUT /api/timetable/admin/curriculum  { branch_id, semester, slots: [{ slot_type, slot_label, codes: [] }] }
+// Replaces every slot of that branch + semester. Not transactional: delete then re-insert.
+export const saveAdminCurriculum = async (req, res) => {
+  try {
+    const { branch_id, semester, slots } = req.body;
+    if (!branch_id || !semester || !Array.isArray(slots)) {
+      return res.status(400).json({ success: false, message: "branch_id, semester and slots are required" });
+    }
+    for (const s of slots) {
+      if (!["compulsory", "lateral"].includes(s.slot_type) || !Array.isArray(s.codes) || s.codes.length === 0) {
+        return res.status(400).json({ success: false, message: "Each slot needs a valid type and at least one subject" });
+      }
+    }
+
+    const { data: old, error: oldError } = await supabase
+      .from("curriculum_slots")
+      .select("id")
+      .eq("branch_id", branch_id)
+      .eq("semester", semester);
+    if (oldError) throw oldError;
+
+    const oldIds = old.map((s) => s.id);
+    if (oldIds.length) {
+      const { error: optErr } = await supabase.from("curriculum_slot_options").delete().in("slot_id", oldIds);
+      if (optErr) throw optErr;
+      const { error: slotErr } = await supabase.from("curriculum_slots").delete().in("id", oldIds);
+      if (slotErr) throw slotErr;
+    }
+
+    if (slots.length) {
+      const { data: created, error: insErr } = await supabase
+        .from("curriculum_slots")
+        .insert(slots.map((s) => ({ branch_id, semester, slot_type: s.slot_type, slot_label: s.slot_label || null })))
+        .select("id");
+      if (insErr) throw insErr;
+
+      // Inserted rows come back in input order
+      const options = created.flatMap((row, i) =>
+        [...new Set(slots[i].codes)].map((subject_code) => ({ slot_id: row.id, subject_code }))
+      );
+      const { error: optInsErr } = await supabase.from("curriculum_slot_options").insert(options);
+      if (optInsErr) throw optInsErr;
+    }
+
+    return res.status(200).json({ success: true, message: "Curriculum saved" });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ success: false, message: "Server Error" });
+  }
+};
+
 // GET /api/timetable/admin/timings?branch_id=1&semester=5  or  ?q=CS3L
 // Branch + semester -> every subject in that semester's curriculum (compulsory + choice options)
 export const getAdminTimings = async (req, res) => {
