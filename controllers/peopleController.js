@@ -100,7 +100,7 @@ const insertStudents = async (students) => {
         const { error: studentError } = await supabase.from("Student_Details").insert({
             "Roll Number": s.roll,
             User_code: user.id,
-            Hostel_Details: s.hostel,
+            Hostel_Details: s.hostel || "",          // column is NOT NULL; "" = no hall yet
             "Room No": s.room || "",
             current_semester: s.semester,
             degree: s.programme,
