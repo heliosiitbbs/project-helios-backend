@@ -5,6 +5,8 @@ import supabase from "../config/Supabase.js";
 import redis from "../config/redis.js";
 import nodemailer from "nodemailer";
 import firebaseAuth from "../config/Firebase.js";
+import { isAccessClosed, accessEndsAt } from "../utils/academics.js";
+import { visitorAccessMessage } from "../utils/visitorAccess.js";
 
 // ---------- shared helpers ----------
 
@@ -70,6 +72,12 @@ const readAnyToken = (req) => {
 // logins (admin dashboard) keep short 1-hour sessions that can't be renewed.
 const APP_SESSION_TTL = "30d";
 
+// Students who have finished their programme lose access two months later
+const accessClosedMessage = (studentDetails) =>
+    isAccessClosed(studentDetails?.last_promoted_cycle)
+        ? `Your programme has ended. App access ended on ${new Date(accessEndsAt(studentDetails.last_promoted_cycle) - 1).toDateString()}.`
+        : null;
+
 // Session JWT + the response fields the frontends expect after a login
 const issueSession = async (user, { app = false } = {}) => {
     let payload;
@@ -80,6 +88,8 @@ const issueSession = async (user, { app = false } = {}) => {
             .eq("User_code", user.id)
             .maybeSingle();
         if (!studentDetails) return { error: "Student details not found" };
+        const closed = accessClosedMessage(studentDetails);
+        if (closed) return { error: closed, status: 403 };
         payload = {
             user_type: user["User Type"],
             rollnumber: studentDetails["Roll Number"],
@@ -173,7 +183,7 @@ export const loginUser = async (req, res) => {
 
         const session = await issueSession(user);
         if (session.error) {
-            return res.status(404).json({ success: false, message: session.error });
+            return res.status(session.status || 404).json({ success: false, message: session.error });
         }
 
         // Record this login; the previous timestamp is returned so the admin
@@ -270,6 +280,19 @@ export const verifyGoogleSignIn = async (req, res) => {
             });
         }
 
+        const visitorBlocked = await visitorAccessMessage(user);
+        if (visitorBlocked) return res.status(403).json({ success: false, message: visitorBlocked });
+
+        if (user["User Type"] === "Student") {
+            const { data: studentDetails } = await supabase
+                .from("Student_Details")
+                .select("last_promoted_cycle")
+                .eq("User_code", user.id)
+                .maybeSingle();
+            const closed = accessClosedMessage(studentDetails);
+            if (closed) return res.status(403).json({ success: false, message: closed });
+        }
+
         const missing = missingProfileFields(user);
 
         // Profile already complete: sign straight in, no further step
@@ -277,7 +300,7 @@ export const verifyGoogleSignIn = async (req, res) => {
         if (missing.length === 0) {
             session = await issueSession(user, { app: true });
             if (session.error) {
-                return res.status(404).json({ success: false, message: session.error });
+                return res.status(session.status || 404).json({ success: false, message: session.error });
             }
             await supabase.from("User_Details").update({ last_login_at: new Date().toISOString() }).eq("id", user.id);
         }
@@ -491,7 +514,7 @@ export const registerOrUpdateUserPin = async (req, res) => {
 
         const session = await issueSession(user);
         if (session.error) {
-            return res.status(404).json({ success: false, message: session.error });
+            return res.status(session.status || 404).json({ success: false, message: session.error });
         }
 
         const missing = missingProfileFields({ ...user, password: "set" });
@@ -578,7 +601,7 @@ export const completeProfile = async (req, res) => {
 
         const session = await issueSession(user, { app: true });
         if (session.error) {
-            return res.status(404).json({ success: false, message: session.error });
+            return res.status(session.status || 404).json({ success: false, message: session.error });
         }
 
         await supabase.from("User_Details").update({ last_login_at: new Date().toISOString() }).eq("id", user.id);
@@ -615,7 +638,7 @@ export const refreshSession = async (req, res) => {
 
         const session = await issueSession(user, { app: true });
         if (session.error) {
-            return res.status(401).json({ success: false, message: session.error });
+            return res.status(session.status || 401).json({ success: false, message: session.error });
         }
 
         res.json({ success: true, token: session.token, userType: session.userType, email_id: user.email_id });

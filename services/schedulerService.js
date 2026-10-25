@@ -1,5 +1,6 @@
 import supabase from "../config/Supabase.js";
 import { archiveExpiredUsers, archiveResolvedLostItems } from "../utils/excelArchiver.js";
+import { LAST_SEMESTER, programmeName, registerCoreSubjects } from "../utils/academics.js";
 
 // Helper: safely record execution log
 export const recordSchedulerLog = async (jobType, status, details) => {
@@ -200,32 +201,35 @@ export const processExpiredUsers = async () => {
 
 /**
  * JOB 2: Automatic Semester Progression
- * Baseline cutoff dates: December 18 and May 30
- * - After Dec 18: Odd semester -> Even semester (+1)
- * - After May 30: Even semester -> Next Odd semester (+1)
+ * Runs once per cycle: on or after December 18 (odd -> even) and on or after June 30 (even -> odd).
+ * - Each student moves up one semester, but never past their programme's last semester
+ *   (they stay there; their app access ends with their last_promoted_cycle).
+ * - PhD scholars keep counting up (no last semester).
+ * - Students with no semester set are left alone.
+ * - Promoted students get the compulsory subjects of their new semester registered.
+ * A SUCCESS log for the cycle in scheduler_logs means it already ran; force: true runs it again.
  */
 export const processSemesterProgression = async (options = {}) => {
   console.log("[Scheduler] Running Job 2: processSemesterProgression...", options);
   const now = new Date();
-  const month = now.getMonth(); // 0 = Jan, 4 = May, 11 = Dec
+  const month = now.getMonth(); // 0 = Jan, 5 = Jun, 11 = Dec
   const day = now.getDate();
   const year = now.getFullYear();
 
   let activeCycle = null;
 
-  // December transition: On or after Dec 18 through January
+  // December transition: on or after Dec 18 through January
   if ((month === 11 && day >= 18) || month === 0) {
-    const cycleYear = month === 0 ? year - 1 : year;
-    activeCycle = `DEC_${cycleYear}`;
+    activeCycle = `DEC_${month === 0 ? year - 1 : year}`;
   }
-  // May transition: On or after May 30 through June
-  else if ((month === 4 && day >= 30) || month === 5) {
-    activeCycle = `MAY_${year}`;
+  // June transition: on or after Jun 30 through July
+  else if ((month === 5 && day >= 30) || month === 6) {
+    activeCycle = `JUN_${year}`;
   }
 
   // Force flag for manual execution / testing
   if (options.force) {
-    activeCycle = options.forceCycle || activeCycle || `FORCED_${year}_${month >= 5 && month < 11 ? "MAY" : "DEC"}`;
+    activeCycle = options.forceCycle || activeCycle || `FORCED_${year}_${month >= 5 && month < 11 ? "JUN" : "DEC"}`;
   }
 
   const results = {
@@ -233,67 +237,101 @@ export const processSemesterProgression = async (options = {}) => {
     cycle: activeCycle,
     totalEvaluated: 0,
     promotedCount: 0,
-    details: [],
+    stayedAtLastSemester: 0,
+    coreSubjectsRegistered: 0,
     errors: []
   };
 
   if (!activeCycle) {
-    const msg = `Today (${now.toDateString()}) is not within the semester transition window (December 18 or May 30). Set force: true to run manually.`;
+    const msg = `Today (${now.toDateString()}) is not within the semester transition window (December 18 or June 30). Set force: true to run manually.`;
     console.log(`[Scheduler] ${msg}`);
     results.message = msg;
     return results;
   }
 
+  if (!options.force) {
+    const { data: done, error: logError } = await supabase
+      .from("scheduler_logs")
+      .select("id")
+      .eq("job_type", "SEMESTER_PROGRESSION")
+      .eq("status", "SUCCESS")
+      .eq("details->>cycle", activeCycle)
+      .limit(1);
+    if (logError) {
+      // Without the log we can't tell whether this cycle already ran; don't risk promoting twice
+      console.error("[Scheduler] Could not read scheduler_logs, skipping semester progression:", logError.message);
+      results.errors.push(logError.message);
+      return results;
+    }
+    if (done.length) {
+      results.message = `Semester progression already ran for ${activeCycle}.`;
+      return results;
+    }
+  }
+
   results.executed = true;
 
   try {
-    const { data: students, error } = await supabase
-      .from("Student_Details")
-      .select("*")
-      .order("Roll Number", { ascending: true });
-
-    if (error) throw error;
-    if (!students || students.length === 0) {
-      results.message = "No students found to evaluate.";
-      return results;
+    const students = [];
+    for (let from = 0; ; from += 1000) {
+      const { data, error } = await supabase
+        .from("Student_Details")
+        .select(`"Roll Number", current_semester`)
+        .not("current_semester", "is", null)
+        .range(from, from + 999);
+      if (error) throw error;
+      students.push(...data);
+      if (data.length < 1000) break;
     }
-
     results.totalEvaluated = students.length;
 
+    // Group by target semester so each group is one update
+    const moves = {};
     for (const student of students) {
-      const rollNumber = student["Roll Number"];
-      const currentSem = Number(student.current_semester) || 1;
-      const nextSem = currentSem + 1;
-
-      try {
-        await supabase
-          .from("Student_Details")
-          .update({ current_semester: nextSem })
-          .eq("Roll Number", rollNumber);
-
-        results.promotedCount++;
-        results.details.push({
-          rollNumber,
-          fromSemester: currentSem,
-          toSemester: nextSem
-        });
-        console.log(`[Scheduler] Student ${rollNumber} advanced semester: ${currentSem} -> ${nextSem}`);
-      } catch (updateErr) {
-        results.errors.push(`Error advancing semester for ${rollNumber}: ${updateErr.message}`);
+      const roll = student["Roll Number"];
+      const last = LAST_SEMESTER[programmeName(roll)];
+      if (last && student.current_semester >= last) {
+        results.stayedAtLastSemester++;
+        continue;
       }
+      const nextSem = student.current_semester + 1;
+      (moves[nextSem] = moves[nextSem] || []).push(roll);
     }
 
-    await recordSchedulerLog("SEMESTER_PROGRESSION", "SUCCESS", results);
+    const promoted = [];
+    for (const [nextSem, rolls] of Object.entries(moves)) {
+      for (let i = 0; i < rolls.length; i += 200) {
+        const chunk = rolls.slice(i, i + 200);
+        const { error } = await supabase
+          .from("Student_Details")
+          .update({ current_semester: Number(nextSem) })
+          .in("Roll Number", chunk);
+        if (error) {
+          results.errors.push(`Semester ${nextSem} update failed for ${chunk.length} students: ${error.message}`);
+          continue;
+        }
+        promoted.push(...chunk.map((roll) => ({ roll, semester: Number(nextSem) })));
+      }
+    }
+    results.promotedCount = promoted.length;
+
+    try {
+      results.coreSubjectsRegistered = await registerCoreSubjects(promoted);
+    } catch (coreErr) {
+      results.errors.push(`Core subject registration failed: ${coreErr.message}`);
+    }
+
+    console.log(`[Scheduler] ${activeCycle}: promoted ${results.promotedCount}, ${results.stayedAtLastSemester} stayed at their last semester, ${results.coreSubjectsRegistered} core registrations added`);
+    await recordSchedulerLog("SEMESTER_PROGRESSION", results.errors.length ? "PARTIAL" : "SUCCESS", results);
     return results;
 
   } catch (err) {
     console.error("[Scheduler] Error in processSemesterProgression:", err);
     results.errors.push(err.message);
-    await recordSchedulerLog("SEMESTER_PROGRESSION", "ERROR", { error: err.message });
+    await recordSchedulerLog("SEMESTER_PROGRESSION", "ERROR", { cycle: activeCycle, error: err.message });
     return results;
   }
 };
-
 
 /**
  * JOB 3: Resolved Lost and Found Item Retention & Excel Archival

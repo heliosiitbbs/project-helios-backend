@@ -1,6 +1,8 @@
 import jwt from 'jsonwebtoken';
 
 import supabase from "../config/Supabase.js";
+import { isAccessClosed, accessEndsAt } from "../utils/academics.js";
+import { visitorAccessMessage } from "../utils/visitorAccess.js";
 
 export const protect = async (req, res, next) => {
   let token;
@@ -36,7 +38,7 @@ export const protect = async (req, res, next) => {
     // 3. Check user validity from database
     const { data: userData, error: userError } = await supabase
       .from("User_Details")
-      .select(`*, Student_Details ("Roll Number", Hostel_Details)`)
+      .select(`*, Student_Details ("Roll Number", Hostel_Details, last_promoted_cycle)`)
       .eq("id", decoded.id)
       .maybeSingle();
 
@@ -77,6 +79,20 @@ export const protect = async (req, res, next) => {
       ...decoded,
       dbUser
     };
+
+    // Students who have finished their programme lose access two months later
+    if (decoded.user_type === "Student" && student && isAccessClosed(student.last_promoted_cycle)) {
+      return res.status(403).json({
+        success: false,
+        message: `Your programme has ended. App access ended on ${new Date(accessEndsAt(student.last_promoted_cycle) - 1).toDateString()}.`
+      });
+    }
+
+    // Visitors can only use the app between the first and last day of their visit
+    const visitorBlocked = await visitorAccessMessage(dbUser);
+    if (visitorBlocked) {
+      return res.status(403).json({ success: false, message: visitorBlocked });
+    }
 
     if (decoded.user_type === "Student" && student) {
       req.user.rollnumber = student["Roll Number"];

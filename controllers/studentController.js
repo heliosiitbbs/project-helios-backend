@@ -1,4 +1,5 @@
 import supabase from "../config/Supabase.js";
+import { computeFinalCycle, registerCoreSubjects, programmeName, LAST_SEMESTER, accessEndsAt } from "../utils/academics.js";
 
 const HOSTEL_NAME_MAP = {
     "BHR": "Brahmaputra Hall",
@@ -70,6 +71,9 @@ function formatStudentRow(row) {
 
         // Semester & Timestamp
         current_semester: row.current_semester !== undefined ? row.current_semester : null,
+        degree: programmeName(row["Roll Number"]) || row.degree || null,
+        last_semester: LAST_SEMESTER[programmeName(row["Roll Number"])] || null,
+        access_ends_at: accessEndsAt(row.last_promoted_cycle)?.toISOString() || null,
         created_at: row.created_at || null
     };
 }
@@ -128,8 +132,8 @@ export const updateStudentCredentials = async (req, res) => {
         if (adviser !== undefined) updateData["Faculty Adviser"] = adviser === "" ? null : adviser;
         if (semester !== undefined) {
             const semesterNumber = Number(semester);
-            if (!Number.isInteger(semesterNumber) || semesterNumber < 1 || semesterNumber > 10) {
-                return res.status(400).json({ success: false, message: "Semester must be a whole number from 1 to 10" });
+            if (!Number.isInteger(semesterNumber) || semesterNumber < 1 || semesterNumber > 20) {
+                return res.status(400).json({ success: false, message: "Semester must be a whole number from 1 to 20" });
             }
             updateData.current_semester = semesterNumber;
         }
@@ -180,6 +184,12 @@ export const updateStudentCredentials = async (req, res) => {
             });
         }
 
+        // A new semester (e.g. repeating one) moves the end of the programme, so app access follows it
+        const finalRoll = newRoll || oldRoll;
+        if (updateData.current_semester !== undefined) {
+            updateData.last_promoted_cycle = computeFinalCycle(finalRoll, updateData.current_semester);
+        }
+
         const { data, error } = await supabase
             .from("Student_Details")
             .update(updateData)
@@ -197,6 +207,14 @@ export const updateStudentCredentials = async (req, res) => {
         }
         if (!data || data.length === 0) {
             return res.status(404).json({ success: false, message: "Student not found" });
+        }
+
+        if (updateData.current_semester !== undefined) {
+            try {
+                await registerCoreSubjects([{ roll: finalRoll, semester: updateData.current_semester }]);
+            } catch (coreErr) {
+                console.error("Core subject registration failed:", coreErr);
+            }
         }
 
         if (newRoll) {

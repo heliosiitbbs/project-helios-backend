@@ -3,6 +3,9 @@ import {
   getMyTimetable,
   getMyCurriculum,
   updateMySubjectSelections,
+  searchSubjectsForStudent,
+  addExtraSubject,
+  removeExtraSubject,
   getAllHolidays,
   addHoliday,
   deleteHoliday
@@ -27,6 +30,10 @@ const router = express.Router();
 router.get("/my-timetable", protect, getMyTimetable);
 router.get("/my-curriculum", protect, getMyCurriculum);
 router.patch("/register-subjects", protect, updateMySubjectSelections);
+// Backlogs and other subjects outside the curriculum
+router.get("/subject-search", protect, searchSubjectsForStudent);
+router.post("/extra-subjects", protect, addExtraSubject);
+router.delete("/extra-subjects/:code", protect, removeExtraSubject);
 
 const holidayAdminRoles = authorize("Admin", "Super Admin", "Time Table Admin");
 router.get("/holidays", protect, holidayAdminRoles, getAllHolidays);

@@ -37,6 +37,7 @@ import gateRoutes from "./routes/gateRoutes.js";
 import bugRoutes from "./routes/bugRoutes.js";
 import cabSharingRoutes from "./routes/cabSharingRoutes.js";
 import shareRoutes from "./routes/shareRoutes.js";
+import peopleRoutes from "./routes/peopleRoutes.js";
 import { initScheduler } from "./jobs/cronScheduler.js";
 
 // Always allowed, on top of any extra origins in CORS_ALLOWED_ORIGINS (comma separated)
@@ -104,6 +105,7 @@ app.use("/api/notifications", notificationRoutes);
 app.use("/api/gate", gateRoutes);
 app.use("/api/bugs", bugRoutes);
 app.use("/api/cab-sharing", cabSharingRoutes);
+app.use("/api/people", peopleRoutes);
 // Public pages behind links shared from the app (e.g. /r/ride/12)
 app.use("/r", shareRoutes);
 

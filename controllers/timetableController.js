@@ -1,5 +1,6 @@
 import supabase from "../config/Supabase.js";
 import { sendPushToAll, formatDay, todayOnCampus } from "../utils/pushNotifications.js";
+import { parseRollNumber, resolveProgramme, getDefaultAcademicYear } from "../utils/academics.js";
 
 // Parses a Postgres "time with time zone" string (e.g. "08:00:00+00") into
 // a decimal hour (e.g. 8.5 for 8:30) so the frontend can position it on a
@@ -9,124 +10,6 @@ const parseTimeToHour = (timeString) => {
   const match = timeString.match(/^(\d{2}):(\d{2})/);
   if (!match) return null;
   return Number(match[1]) + Number(match[2]) / 60;
-};
-
-// Roll number format: [A/S admission letter, MS(R) and PhD only] + YY + branch code (2) + course code (2) + sequence,
-// e.g. "22CS01031" -> year 22, branch "CS", course "01", sequence "031"; "A22CE09017" -> PhD Civil
-// Course name and branch names must match courses.name / branches.name exactly (the curriculum lookup is by name)
-const PROGRAMMES = {
-  "01": {
-    course: "B.Tech",
-    branches: {
-      CS: "Computer Science and Engineering",
-      EC: "Electronics and Communication Engineering",
-      EE: "Electrical Engineering",
-      ME: "Mechanical Engineering",
-      CE: "Civil Engineering",
-      EP: "Engineering Physics",
-      MM: "Metallurgical and Materials Engineering",
-      MC: "Mathematics and Computing"
-    }
-  },
-  // Dual CE and ME rolls don't say which of the three M.Tech specialisations the student is in,
-  // so those fall back to the parent B.Tech branch (see DUAL_FALLBACK)
-  "02": {
-    course: "Dual Degree",
-    branches: {
-      CS: "Computer Science & Engineering",
-      EE: "EE Power Electronics & Drives",
-      MM: "Metallurgical & Materials Engineering"
-    }
-  },
-  "03": { course: "ITEP", branches: { HS: "Economics", CY: "Chemistry", PH: "Physics", MA: "Mathematics" } },
-  "05": { course: "M.Sc", branches: { CY: "Chemistry", PH: "Physics", MA: "Mathematics", GG: "Geology", CL: "Atmosphere & Ocean Sciences" } },
-  "06": {
-    course: "M.Tech",
-    branches: {
-      CS: "Computer Science & Engineering",
-      AI: "Artificial Intelligence",
-      SP: "Signal Processing & Communication Engineering",
-      SC: "Semiconductor Technology & Chip Design",
-      PD: "Power Electronics & Drives",
-      PS: "Power System Engineering",
-      EV: "Environmental Engineering",
-      GT: "Geotechnical Engineering",
-      SE: "Structural Engineering",
-      TE: "Transportation Engineering",
-      WR: "Water Resources Engineering",
-      SD: "Mechanical Systems Design",
-      TS: "Thermal Science & Engineering",
-      MF: "Manufacturing Engineering",
-      RA: "Robotics & Artificial Intelligence",
-      MM: "Metallurgical & Materials Engineering",
-      CL: "Climate Science & Technology"
-    }
-  },
-  "08": {
-    course: "M.S. by Research",
-    branches: {
-      CS: "Computer Science & Engineering",
-      EE: "Electrical Engineering",
-      EC: "Electronics & Communication Engineering",
-      CE: "Civil Engineering",
-      MM: "Metallurgical & Materials Engineering",
-      ME: "Mechanical Engineering"
-    }
-  },
-  "09": {
-    course: "Ph.D.",
-    branches: {
-      BS: "Bio-Sciences",
-      CY: "Chemistry",
-      PH: "Physics",
-      MA: "Mathematics",
-      AO: "Climate Sciences",
-      GG: "Geosciences",
-      ES: "Geosciences",
-      CS: "Computer Science & Engineering",
-      EE: "Electrical Engineering",
-      EC: "Electronics & Communication Engineering",
-      CE: "Civil Engineering",
-      MM: "Metallurgical & Materials Engineering",
-      ME: "Mechanical Engineering",
-      EM: "Economics",
-      EN: "English",
-      PY: "Psychology",
-      PL: "Philosophy"
-    }
-  }
-};
-
-const DUAL_FALLBACK = { CE: "Civil Engineering", ME: "Mechanical Engineering" };
-
-const parseRollNumber = (rollNumber) => {
-  const match = String(rollNumber || "").toUpperCase().match(/^[A-Z]?(\d{2})([A-Z]{2})(\d{2})(\d+)$/);
-  if (!match) return null;
-  return {
-    admissionYear: match[1],
-    branchCode: match[2],
-    courseCode: match[3],
-    sequence: match[4]
-  };
-};
-
-// { courseName, branchName } for a parsed roll number, or null if the programme/branch isn't known
-const resolveProgramme = ({ courseCode, branchCode }) => {
-  const programme = PROGRAMMES[courseCode];
-  const branchName = programme?.branches[branchCode];
-  if (branchName) return { courseName: programme.course, branchName };
-  if (courseCode === "02" && DUAL_FALLBACK[branchCode]) {
-    return { courseName: PROGRAMMES["01"].course, branchName: DUAL_FALLBACK[branchCode] };
-  }
-  return null;
-};
-
-// Academic year fallback for brand new registrations - only used if the
-// student has no existing registration row this semester to copy Year from.
-const getDefaultAcademicYear = () => {
-  const now = new Date();
-  const startYear = now.getMonth() >= 6 ? now.getFullYear() : now.getFullYear() - 1;
-  return `${startYear}-${startYear + 1}`;
 };
 
 // Shared by getMyCurriculum and updateMySubjectSelections: resolves the
@@ -381,44 +264,16 @@ export const getMyCurriculum = async (req, res) => {
       return res.status(500).json({ success: false, message: "Error fetching curriculum slots" });
     }
 
-    if (!slots || slots.length === 0) {
-      return res.status(200).json({
-        success: true,
-        course: courseName,
-        branch: branchName,
-        semester: currentSemester,
-        slots: []
-      });
-    }
+    const slotIds = (slots || []).map((s) => s.id);
 
-    const slotIds = slots.map((s) => s.id);
-
-    const { data: options, error: optionsError } = await supabase
-      .from("curriculum_slot_options")
-      .select("*")
-      .in("slot_id", slotIds);
+    const { data: options, error: optionsError } = slotIds.length
+      ? await supabase.from("curriculum_slot_options").select("*").in("slot_id", slotIds)
+      : { data: [], error: null };
 
     if (optionsError) {
       console.error(optionsError);
       return res.status(500).json({ success: false, message: "Error fetching slot options" });
     }
-
-    const subjectCodes = [...new Set((options || []).map((o) => o.subject_code))];
-
-    const { data: subjects, error: subjectsError } = await supabase
-      .from("Subject_Details")
-      .select("*")
-      .in("subject_code", subjectCodes);
-
-    if (subjectsError) {
-      console.error(subjectsError);
-      return res.status(500).json({ success: false, message: "Error fetching subject details" });
-    }
-
-    const subjectByCode = {};
-    (subjects || []).forEach((s) => {
-      subjectByCode[s.subject_code] = s;
-    });
 
     const { data: registrations, error: regError } = await supabase
       .from("Subject_Registrations")
@@ -432,6 +287,21 @@ export const getMyCurriculum = async (req, res) => {
     }
 
     const registeredCodes = new Set((registrations || []).map((r) => r["subject code"]));
+    const subjectCodes = [...new Set([...(options || []).map((o) => o.subject_code), ...registeredCodes])];
+
+    const { data: subjects, error: subjectsError } = subjectCodes.length
+      ? await supabase.from("Subject_Details").select("*").in("subject_code", subjectCodes)
+      : { data: [], error: null };
+
+    if (subjectsError) {
+      console.error(subjectsError);
+      return res.status(500).json({ success: false, message: "Error fetching subject details" });
+    }
+
+    const subjectByCode = {};
+    (subjects || []).forEach((s) => {
+      subjectByCode[s.subject_code] = s;
+    });
 
     const optionsBySlot = {};
     (options || []).forEach((o) => {
@@ -443,7 +313,7 @@ export const getMyCurriculum = async (req, res) => {
       });
     });
 
-    const resultSlots = slots.map((slot) => {
+    const resultSlots = (slots || []).map((slot) => {
       const slotOptions = optionsBySlot[slot.id] || [];
       const registeredOption = slotOptions.find((opt) => registeredCodes.has(opt.subject_code));
       // Compulsory slots have exactly one option and aren't a real choice,
@@ -457,16 +327,30 @@ export const getMyCurriculum = async (req, res) => {
         slot_type: slot.slot_type,
         slot_label: slot.slot_label,
         options: slotOptions,
-        selected_subject_code: selected
+        selected_subject_code: selected,
+        // false when an admin has dropped this core subject for the student
+        registered: !!registeredOption
       };
     });
+
+    // Anything registered outside the curriculum: backlogs the student added, or subjects an admin added
+    const slotCodes = new Set((options || []).map((o) => o.subject_code));
+    const extraSubjects = (registrations || [])
+      .filter((r) => !slotCodes.has(r["subject code"]))
+      .map((r) => ({
+        subject_code: r["subject code"],
+        subject_name: subjectByCode[r["subject code"]]?.subject_name || r["subject code"],
+        credits: subjectByCode[r["subject code"]]?.credits ?? null,
+        removable: r.type === EXTRA_SUBJECT_TYPE
+      }));
 
     return res.status(200).json({
       success: true,
       course: courseName,
       branch: branchName,
       semester: currentSemester,
-      slots: resultSlots
+      slots: resultSlots,
+      extra_subjects: extraSubjects
     });
   } catch (err) {
     console.error(err);
@@ -608,6 +492,106 @@ export const updateMySubjectSelections = async (req, res) => {
       success: true,
       message: "Subject selections updated successfully"
     });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ success: false, message: "Server Error" });
+  }
+};
+
+// ---------- Extra subjects (backlogs) ----------
+// Students may register subjects outside their curriculum, e.g. a backlog from an earlier
+// semester. These rows carry type "extra", and only those can be removed by the student.
+const EXTRA_SUBJECT_TYPE = "extra";
+const MAX_EXTRA_SUBJECTS = 8;
+
+// GET /api/timetable/subject-search?query=CS2L - subject catalog search for the student app
+export const searchSubjectsForStudent = async (req, res) => {
+  try {
+    // Characters that are filter syntax in PostgREST or() are stripped
+    const query = String(req.query.query || "").replace(/[,()*%"\\]/g, " ").trim();
+    if (query.length < 2) return res.status(200).json({ success: true, subjects: [] });
+
+    const { data, error } = await supabase
+      .from("Subject_Details")
+      .select("subject_code, subject_name, credits")
+      .or(`subject_code.ilike.*${query}*,subject_name.ilike.*${query}*`)
+      .order("subject_code")
+      .limit(25);
+
+    if (error) throw error;
+    return res.status(200).json({ success: true, subjects: data });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ success: false, message: "Server Error" });
+  }
+};
+
+// POST /api/timetable/extra-subjects { subject_code }
+export const addExtraSubject = async (req, res) => {
+  try {
+    const context = await resolveStudentContext(req, res);
+    if (!context) return;
+    const { rollNumber, currentSemester } = context;
+
+    const subjectCode = String(req.body?.subject_code || "").trim();
+    if (!subjectCode) return res.status(400).json({ success: false, message: "subject_code is required" });
+
+    const { data: subject, error: subjectError } = await supabase
+      .from("Subject_Details")
+      .select("subject_code, subject_name, credits")
+      .eq("subject_code", subjectCode)
+      .maybeSingle();
+    if (subjectError) throw subjectError;
+    if (!subject) return res.status(404).json({ success: false, message: `Subject ${subjectCode} not found` });
+
+    const { data: existing, error: existingError } = await supabase
+      .from("Subject_Registrations")
+      .select(`"subject code", Year, type`)
+      .eq("student_id", rollNumber)
+      .eq("semester", currentSemester);
+    if (existingError) throw existingError;
+
+    if (existing.some((r) => r["subject code"] === subjectCode)) {
+      return res.status(409).json({ success: false, message: `${subjectCode} is already in your list` });
+    }
+    if (existing.filter((r) => r.type === EXTRA_SUBJECT_TYPE).length >= MAX_EXTRA_SUBJECTS) {
+      return res.status(400).json({ success: false, message: `You can add at most ${MAX_EXTRA_SUBJECTS} extra subjects` });
+    }
+
+    const { error: insertError } = await supabase.from("Subject_Registrations").insert([{
+      student_id: rollNumber,
+      "subject code": subjectCode,
+      Year: existing[0]?.Year || getDefaultAcademicYear(),
+      semester: currentSemester,
+      type: EXTRA_SUBJECT_TYPE
+    }]);
+    if (insertError) throw insertError;
+
+    return res.status(201).json({ success: true, subject: { ...subject, removable: true } });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ success: false, message: "Server Error" });
+  }
+};
+
+// DELETE /api/timetable/extra-subjects/:code - only subjects the student added themselves
+export const removeExtraSubject = async (req, res) => {
+  try {
+    const context = await resolveStudentContext(req, res);
+    if (!context) return;
+
+    const { data, error } = await supabase
+      .from("Subject_Registrations")
+      .delete()
+      .eq("student_id", context.rollNumber)
+      .eq("semester", context.currentSemester)
+      .eq("subject code", req.params.code)
+      .eq("type", EXTRA_SUBJECT_TYPE)
+      .select("id");
+    if (error) throw error;
+    if (!data.length) return res.status(404).json({ success: false, message: "That subject isn't one you added" });
+
+    return res.status(200).json({ success: true, message: "Subject removed" });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ success: false, message: "Server Error" });
