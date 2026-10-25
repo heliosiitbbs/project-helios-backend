@@ -4,8 +4,6 @@ import {
     createFoodStall,
     updateFoodStall,
     deleteFoodStall,
-    getFoodStallStats,
-    searchFoodStalls,
     getFoodStallById
 } from "../controllers/foodStallController.js";
 import { protect, authorize } from "../middlewares/authMiddleware.js";
@@ -14,8 +12,6 @@ import upload from "../middlewares/uploadStallPhoto.js";
 const router = express.Router();
 
 // Specific routes (MUST come before /:id)
-router.get("/stats", protect, getFoodStallStats);
-router.get("/search", protect, searchFoodStalls);
 router.get("/get-food-stalls", protect, getFoodStalls); // Legacy endpoint support
 
 // Root CRUD routes

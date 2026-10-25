@@ -23,7 +23,6 @@ import eventRoutes from "./routes/eventRoutes.js";
 import grievanceRoutes from "./routes/grievanceRoutes.js";
 import hostelAdminRoutes from "./routes/hostelAdminRoutes.js";
 import staffRoutes from "./routes/staffRoutes.js";
-import subjectRoutes from "./routes/subjectRoutes.js";
 import studentRoutes from "./routes/studentRoutes.js";
 import userRoutes from "./routes/userRoutes.js";
 import foodStallRoutes from "./routes/foodStallRoutes.js";
@@ -32,18 +31,13 @@ import guestHouseRoutes from "./routes/guestHouseRoutes.js";
 import leaveRoutes from "./routes/leaveRoutes.js";
 import vaultRoutes from "./routes/vaultRoutes.js";
 import timetableRoutes from "./routes/timetableRoutes.js";
-import websiteRoutes from "./routes/websiteRoutes.js";
-import emergencyContactsRoutes from "./routes/emergencyContactsRoutes.js";
-import vaultResourcesRoutes from "./routes/vaultResourcesRoutes.js";
 import paperRoutes from "./routes/paperRoutes.js";
 import notificationRoutes from "./routes/notificationRoutes.js";
 import gateRoutes from "./routes/gateRoutes.js";
 import bugRoutes from "./routes/bugRoutes.js";
 import cabSharingRoutes from "./routes/cabSharingRoutes.js";
 import shareRoutes from "./routes/shareRoutes.js";
-import schedulerRoutes from "./routes/schedulerRoutes.js";
 import { initScheduler } from "./jobs/cronScheduler.js";
-import visitorRoutes from "./routes/visitorRoutes.js";
 
 // Always allowed, on top of any extra origins in CORS_ALLOWED_ORIGINS (comma separated)
 const DEFAULT_ALLOWED_ORIGINS = [
@@ -95,7 +89,6 @@ app.use("/api/events", eventRoutes);
 app.use("/api/grievances", grievanceRoutes);
 app.use("/api/hostel-admin", hostelAdminRoutes);
 app.use("/api/staff", staffRoutes);
-app.use("/api/subjects", subjectRoutes);
 app.use("/api/students", studentRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/bus", busRoutes);
@@ -106,9 +99,6 @@ app.use("/api/guest-house", guestHouseRoutes);
 app.use("/api/leave", leaveRoutes);
 app.use("/api/vault", vaultRoutes);
 app.use("/api/timetable", timetableRoutes);
-app.use("/api/websites", websiteRoutes);
-app.use("/api/emergency-contacts", emergencyContactsRoutes);
-app.use("/api/vault-resources", vaultResourcesRoutes);
 app.use("/api/papers", paperRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/gate", gateRoutes);
@@ -116,8 +106,6 @@ app.use("/api/bugs", bugRoutes);
 app.use("/api/cab-sharing", cabSharingRoutes);
 // Public pages behind links shared from the app (e.g. /r/ride/12)
 app.use("/r", shareRoutes);
-app.use("/api/scheduler", schedulerRoutes);
-app.use("/api/visitors", visitorRoutes);
 
 app.use((err, req, res, next) => {
     console.error(err);

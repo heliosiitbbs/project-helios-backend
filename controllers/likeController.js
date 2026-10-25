@@ -1,4 +1,3 @@
-import jwt from "jsonwebtoken";
 import supabase from "../config/Supabase.js";
 
 // =====================================
@@ -7,21 +6,8 @@ import supabase from "../config/Supabase.js";
 
 export const getPostLikes = async (req, res) => {
     try {
-        const authHeader = req.headers.authorization;
-
-        if (!authHeader || !authHeader.startsWith("Bearer ")) {
-            return res.status(401).json({
-                success: false,
-                message: "Access token missing"
-            });
-        }
-
-        const token = authHeader.split(" ")[1];
-
-        const decoded = jwt.verify(
-            token,
-            process.env.JWT_SECRET
-        );
+        // Signed-in user, checked by the protect middleware on the route
+        const decoded = req.user;
 
         const { id } = req.params;
 
@@ -76,21 +62,8 @@ export const getPostLikes = async (req, res) => {
 
 export const likePost = async (req, res) => {
     try {
-        const authHeader = req.headers.authorization;
-
-        if (!authHeader || !authHeader.startsWith("Bearer ")) {
-            return res.status(401).json({
-                success: false,
-                message: "Access token missing"
-            });
-        }
-
-        const token = authHeader.split(" ")[1];
-
-        const decoded = jwt.verify(
-            token,
-            process.env.JWT_SECRET
-        );
+        // Signed-in user, checked by the protect middleware on the route
+        const decoded = req.user;
 
         const { id } = req.params;
 
@@ -199,21 +172,8 @@ export const likePost = async (req, res) => {
 
 export const unlikePost = async (req, res) => {
     try {
-        const authHeader = req.headers.authorization;
-
-        if (!authHeader || !authHeader.startsWith("Bearer ")) {
-            return res.status(401).json({
-                success: false,
-                message: "Access token missing"
-            });
-        }
-
-        const token = authHeader.split(" ")[1];
-
-        const decoded = jwt.verify(
-            token,
-            process.env.JWT_SECRET
-        );
+        // Signed-in user, checked by the protect middleware on the route
+        const decoded = req.user;
 
         const { id } = req.params;
 

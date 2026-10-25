@@ -99,51 +99,6 @@ export const getBusSchedule = async (req, res) => {
 // ADD BUS SCHEDULE (ADMIN ONLY)
 // =====================================
 
-export const addBusSchedule = async (req, res) => {
-    try {
-        const {
-            bus_number,
-            day_of_week,
-            start_time,
-            Route
-        } = req.body;
-
-        const { data, error } = await supabase
-            .from("Bus_Schedule")
-            .insert([
-                {
-                    bus_number,
-                    day_of_week,
-                    start_time,
-                    Route
-                }
-            ])
-            .select();
-
-        if (error) throw error;
-
-        await redis.del(
-            `bus-schedule:${day_of_week}`
-        );
-
-        return res.status(201).json({
-            success: true,
-            message: "Bus schedule added successfully",
-            data
-        });
-
-    } catch (err) {
-        console.error(err);
-        return res.status(500).json({
-            success: false,
-            message: "Server Error"});
-    }
-};
-
-// =====================================
-// GET EXTERNAL TRANSPORT CONTACTS (E-VEHICLES / AUTOS)
-// =====================================
-
 export const getExternalTransportContacts = async (req, res) => {
     try {
         const { type } = req.query; // 'ev' | 'auto' | omitted for all
@@ -179,45 +134,4 @@ export const getExternalTransportContacts = async (req, res) => {
 // =====================================
 // GET ALL SCHEDULES (ADMIN ONLY)
 // =====================================
-
-export const getAllBusSchedules = async (req, res) => {
-    try {
-        const cacheKey = "bus-schedule:all";
-
-        const cachedData = await redis.get(cacheKey);
-
-        if (cachedData) {
-            return res.json({
-                success: true,
-                source: "redis",
-                schedules: cachedData
-            });
-        }
-
-        const { data, error } = await supabase
-            .from("Bus_Schedule")
-            .select("*");
-
-        if (error) throw error;
-
-        await redis.set(
-            cacheKey,
-            data,
-            {
-                ex: 3600
-            }
-        );
-
-        return res.json({
-            success: true,
-            source: "supabase",
-            schedules: data
-        });
-
-    } catch (err) {
-        console.error(err);
-        return res.status(500).json({
-            success: false,
-            message: "Server Error"});
-    }
-};
+

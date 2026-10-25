@@ -3,7 +3,6 @@ import multer from "multer";
 
 import {
     loginUser,
-    checkAccountStatus,
     verifyGoogleSignIn,
     sendAuthVerification,
     verifyAuthCode,
@@ -32,11 +31,6 @@ const uploadProfilePhoto = multer({
 router.post(
     "/login",
     loginUser
-);
-
-router.post(
-    "/check-account",
-    checkAccountStatus
 );
 
 router.post(

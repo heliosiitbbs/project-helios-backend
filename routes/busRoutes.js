@@ -2,8 +2,6 @@ import express from "express";
 
 import {
     getBusSchedule,
-    addBusSchedule,
-    getAllBusSchedules,
     getExternalTransportContacts
 } from "../controllers/busController.js";
 import {
@@ -28,20 +26,6 @@ router.post(
     "/get-bus-schedule",
     protect,
     getBusSchedule
-);
-
-router.post(
-    "/add-bus-schedule",
-    protect,
-    authorize('Admin'),
-    addBusSchedule
-);
-
-router.get(
-    "/all-schedules",
-    protect,
-    authorize('Admin'),
-    getAllBusSchedules
 );
 
 router.get(

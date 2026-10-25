@@ -490,13 +490,11 @@ message:
 
 // Verify OTP code
 const savedOtp = await redis.get(`handover_otp:${given_person_id.toUpperCase()}`);
-if (otp !== '12345') {
-  if (!savedOtp || String(savedOtp).trim() !== String(otp).trim()) {
-    return res.status(400).json({
-      success: false,
-      message: "Invalid or expired OTP code"
-    });
-  }
+if (!savedOtp || String(savedOtp).trim() !== String(otp).trim()) {
+  return res.status(400).json({
+    success: false,
+    message: "Invalid or expired OTP code"
+  });
 }
 await redis.del(`handover_otp:${given_person_id.toUpperCase()}`);
 

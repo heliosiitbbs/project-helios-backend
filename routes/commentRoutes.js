@@ -1,4 +1,5 @@
 import express from "express";
+import { protect } from "../middlewares/authMiddleware.js";
 
 import {
     getPostComments,
@@ -7,6 +8,8 @@ import {
 } from "../controllers/commentController.js";
 
 const router = express.Router();
+
+router.use(protect);
 
 router.get(
     "/:id/comments",

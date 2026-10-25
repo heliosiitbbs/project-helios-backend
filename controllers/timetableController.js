@@ -11,33 +11,114 @@ const parseTimeToHour = (timeString) => {
   return Number(match[1]) + Number(match[2]) / 60;
 };
 
-// Roll number format: YY + branch code (2) + course code (2) + sequence,
-// e.g. "22CS01031" -> year 22, branch "CS", course "01", sequence "031"
-const COURSE_CODE_TO_NAME = {
-  "01": "B.Tech",
-  "02": "Dual Degree"
+// Roll number format: [A/S admission letter, MS(R) and PhD only] + YY + branch code (2) + course code (2) + sequence,
+// e.g. "22CS01031" -> year 22, branch "CS", course "01", sequence "031"; "A22CE09017" -> PhD Civil
+// Course name and branch names must match courses.name / branches.name exactly (the curriculum lookup is by name)
+const PROGRAMMES = {
+  "01": {
+    course: "B.Tech",
+    branches: {
+      CS: "Computer Science and Engineering",
+      EC: "Electronics and Communication Engineering",
+      EE: "Electrical Engineering",
+      ME: "Mechanical Engineering",
+      CE: "Civil Engineering",
+      EP: "Engineering Physics",
+      MM: "Metallurgical and Materials Engineering",
+      MC: "Mathematics and Computing"
+    }
+  },
+  // Dual CE and ME rolls don't say which of the three M.Tech specialisations the student is in,
+  // so those fall back to the parent B.Tech branch (see DUAL_FALLBACK)
+  "02": {
+    course: "Dual Degree",
+    branches: {
+      CS: "Computer Science & Engineering",
+      EE: "EE Power Electronics & Drives",
+      MM: "Metallurgical & Materials Engineering"
+    }
+  },
+  "03": { course: "ITEP", branches: { HS: "Economics", CY: "Chemistry", PH: "Physics", MA: "Mathematics" } },
+  "05": { course: "M.Sc", branches: { CY: "Chemistry", PH: "Physics", MA: "Mathematics", GG: "Geology", CL: "Atmosphere & Ocean Sciences" } },
+  "06": {
+    course: "M.Tech",
+    branches: {
+      CS: "Computer Science & Engineering",
+      AI: "Artificial Intelligence",
+      SP: "Signal Processing & Communication Engineering",
+      SC: "Semiconductor Technology & Chip Design",
+      PD: "Power Electronics & Drives",
+      PS: "Power System Engineering",
+      EV: "Environmental Engineering",
+      GT: "Geotechnical Engineering",
+      SE: "Structural Engineering",
+      TE: "Transportation Engineering",
+      WR: "Water Resources Engineering",
+      SD: "Mechanical Systems Design",
+      TS: "Thermal Science & Engineering",
+      MF: "Manufacturing Engineering",
+      RA: "Robotics & Artificial Intelligence",
+      MM: "Metallurgical & Materials Engineering",
+      CL: "Climate Science & Technology"
+    }
+  },
+  "08": {
+    course: "M.S. by Research",
+    branches: {
+      CS: "Computer Science & Engineering",
+      EE: "Electrical Engineering",
+      EC: "Electronics & Communication Engineering",
+      CE: "Civil Engineering",
+      MM: "Metallurgical & Materials Engineering",
+      ME: "Mechanical Engineering"
+    }
+  },
+  "09": {
+    course: "Ph.D.",
+    branches: {
+      BS: "Bio-Sciences",
+      CY: "Chemistry",
+      PH: "Physics",
+      MA: "Mathematics",
+      AO: "Climate Sciences",
+      GG: "Geosciences",
+      ES: "Geosciences",
+      CS: "Computer Science & Engineering",
+      EE: "Electrical Engineering",
+      EC: "Electronics & Communication Engineering",
+      CE: "Civil Engineering",
+      MM: "Metallurgical & Materials Engineering",
+      ME: "Mechanical Engineering",
+      EM: "Economics",
+      EN: "English",
+      PY: "Psychology",
+      PL: "Philosophy"
+    }
+  }
 };
 
-// Values must match branches.name exactly (the curriculum lookup is by name)
-const BRANCH_CODE_TO_NAME = {
-  CS: "Computer Science and Engineering",
-  EC: "Electronics and Communication Engineering",
-  EE: "Electrical Engineering",
-  ME: "Mechanical Engineering",
-  CE: "Civil Engineering",
-  EP: "Engineering Physics",
-  MM: "Metallurgical and Materials Engineering",
-  MC: "Mathematics and Computing"
-};
+const DUAL_FALLBACK = { CE: "Civil Engineering", ME: "Mechanical Engineering" };
 
 const parseRollNumber = (rollNumber) => {
-  if (!rollNumber || rollNumber.length < 6) return null;
+  const match = String(rollNumber || "").toUpperCase().match(/^[A-Z]?(\d{2})([A-Z]{2})(\d{2})(\d+)$/);
+  if (!match) return null;
   return {
-    admissionYear: rollNumber.slice(0, 2),
-    branchCode: rollNumber.slice(2, 4).toUpperCase(),
-    courseCode: rollNumber.slice(4, 6),
-    sequence: rollNumber.slice(6)
+    admissionYear: match[1],
+    branchCode: match[2],
+    courseCode: match[3],
+    sequence: match[4]
   };
+};
+
+// { courseName, branchName } for a parsed roll number, or null if the programme/branch isn't known
+const resolveProgramme = ({ courseCode, branchCode }) => {
+  const programme = PROGRAMMES[courseCode];
+  const branchName = programme?.branches[branchCode];
+  if (branchName) return { courseName: programme.course, branchName };
+  if (courseCode === "02" && DUAL_FALLBACK[branchCode]) {
+    return { courseName: PROGRAMMES["01"].course, branchName: DUAL_FALLBACK[branchCode] };
+  }
+  return null;
 };
 
 // Academic year fallback for brand new registrations - only used if the
@@ -66,16 +147,17 @@ const resolveStudentContext = async (req, res) => {
     return null;
   }
 
-  const courseName = COURSE_CODE_TO_NAME[parsed.courseCode];
-  const branchName = BRANCH_CODE_TO_NAME[parsed.branchCode];
+  const programme = resolveProgramme(parsed);
 
-  if (!courseName || !branchName) {
+  if (!programme) {
     res.status(400).json({
       success: false,
       message: `Could not determine course/branch from roll number (course code "${parsed.courseCode}", branch code "${parsed.branchCode}")`
     });
     return null;
   }
+
+  const { courseName, branchName } = programme;
 
   const { data: studentRow, error: studentError } = await supabase
     .from("Student_Details")
@@ -654,134 +736,3 @@ export const deleteHoliday = async (req, res) => {
 };
 
 
-
-
-// Admin Endpoints
-export const getAdminTimetableSlots = async (req, res) => {
-  try {
-    const { batch, branch } = req.query;
-
-    if (!batch || !branch) {
-      return res.status(400).json({
-        success: false,
-        message: "batch and branch parameters are required"
-      });
-    }
-
-    const { data, error } = await supabase
-      .from("timetable_slots")
-      .select("*")
-      .eq("batch", batch)
-      .eq("branch", branch);
-
-    if (error) {
-      console.error(error);
-      return res.status(500).json({
-        success: false,
-        message: "Error fetching timetable slots"
-      });
-    }
-
-    const formattedData = (data || []).map(row => {
-      const formatTime = (t) => {
-        if (!t) return "";
-        return t.slice(0, 5); // Take "HH:MM"
-      };
-
-      return {
-        id: row.id,
-        subjectName: row.subject_name,
-        code: row.code,
-        dayOfWeek: row.day_of_week,
-        startTime: formatTime(row.start_time),
-        endTime: formatTime(row.end_time),
-        roomNo: row.room_no,
-        professorName: row.professor_name
-      };
-    });
-
-    return res.status(200).json({
-      success: true,
-      timetable: formattedData
-    });
-  } catch (err) {
-    console.error(err);
-    return res.status(500).json({
-      success: false,
-      message: "Server Error"
-    });
-  }
-};
-
-export const updateAdminTimetableSlots = async (req, res) => {
-  try {
-    const { batch, branch, slots } = req.body;
-
-    if (!batch || !branch || !Array.isArray(slots)) {
-      return res.status(400).json({
-        success: false,
-        message: "batch, branch, and slots (array) are required"
-      });
-    }
-
-    // Step 1: Delete existing slots
-    const { error: deleteError } = await supabase
-      .from("timetable_slots")
-      .delete()
-      .eq("batch", batch)
-      .eq("branch", branch);
-
-    if (deleteError) {
-      console.error(deleteError);
-      return res.status(500).json({
-        success: false,
-        message: "Error clearing existing timetable slots"
-      });
-    }
-
-    // If slots array is empty, we just return success
-    if (slots.length === 0) {
-      return res.status(200).json({
-        success: true,
-        message: "Timetable cleared successfully"
-      });
-    }
-
-    // Step 2: Prepare new rows for insertion
-    const insertRows = slots.map(row => ({
-      batch,
-      branch,
-      subject_name: row.subjectName,
-      code: row.code,
-      day_of_week: row.dayOfWeek,
-      start_time: row.startTime,
-      end_time: row.endTime,
-      room_no: row.roomNo,
-      professor_name: row.professorName
-    }));
-
-    // Step 3: Insert new rows
-    const { error: insertError } = await supabase
-      .from("timetable_slots")
-      .insert(insertRows);
-
-    if (insertError) {
-      console.error(insertError);
-      return res.status(500).json({
-        success: false,
-        message: "Error inserting new timetable slots"
-      });
-    }
-
-    return res.status(200).json({
-      success: true,
-      message: "Timetable updated successfully"
-    });
-  } catch (err) {
-    console.error(err);
-    return res.status(500).json({
-      success: false,
-      message: "Server Error"
-    });
-  }
-};

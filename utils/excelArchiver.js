@@ -93,38 +93,6 @@ export const appendOrWriteExcel = ({ filePath, sheetName = "Archive", newRows, k
 };
 
 /**
- * Archive graduated students who are being deleted from the database.
- * @param {Array<Object>} students
- * @returns {{ filePath: string, totalRows: number, addedCount: number }}
- */
-export const archiveGraduatedStudents = (students) => {
-  ensureArchivesDirectory();
-  const filePath = path.join(ARCHIVES_DIR, "graduated_students_archive.xlsx");
-
-  const formattedRows = students.map((s) => ({
-    "Roll Number": s["Roll Number"] || s.roll_number || "",
-    "Student Name": s["User Name"] || s.name || s.User_Details?.["User Name"] || "",
-    "Email ID": s.email_id || s.email || s.User_Details?.email_id || "",
-    "Phone Number": s.phone_number || s.User_Details?.phone_number || "",
-    "Degree": s.degree || "B.Tech",
-    "Final Semester": s.current_semester || "",
-    "Hostel Details": s.Hostel_Details || s.hostel || "",
-    "Room No": s["Room No"] || s.room_number || "",
-    "Faculty Adviser": s["Faculty Adviser"] || s.faculty_adviser || "",
-    "Graduation Date": s.graduation_date ? new Date(s.graduation_date).toISOString().split("T")[0] : "",
-    "Campus Exit Date": s.campus_exit_date ? new Date(s.campus_exit_date).toISOString().split("T")[0] : "",
-    "Archived At": new Date().toISOString()
-  }));
-
-  return appendOrWriteExcel({
-    filePath,
-    sheetName: "Graduated Students",
-    newRows: formattedRows,
-    keyField: "Roll Number"
-  });
-};
-
-/**
  * Archive resolved lost and found items that are being deleted from the database.
  * @param {Array<Object>} items
  * @returns {{ filePath: string, totalRows: number, addedCount: number }}
@@ -191,14 +159,4 @@ export const archiveExpiredUsers = (users) => {
 };
 
 
-
-export const getArchivePath = (type) => {
-  ensureArchivesDirectory();
-  if (type === "expired-users" || type === "graduated-students") {
-    return path.join(ARCHIVES_DIR, "expired_users_archive.xlsx");
-  }
-  if (type === "lost-and-found") {
-    return path.join(ARCHIVES_DIR, "lost_and_found_archive.xlsx");
-  }
-  return null;
-};
+

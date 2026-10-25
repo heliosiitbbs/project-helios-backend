@@ -1,4 +1,5 @@
 import bcrypt from "bcryptjs";
+import crypto from "crypto";
 import jwt from "jsonwebtoken";
 import supabase from "../config/Supabase.js";
 import redis from "../config/redis.js";
@@ -145,14 +146,22 @@ export const loginUser = async (req, res) => {
         }
 
         let isMatch = false;
-        try {
-            isMatch = await bcrypt.compare(String(password || ""), user.password);
-        } catch {
-            isMatch = false;
-        }
-        // Legacy plaintext passwords
-        if (!isMatch) {
-            isMatch = password === user.password;
+        const isHashed = String(user.password).startsWith("$2");
+        if (isHashed) {
+            try {
+                isMatch = await bcrypt.compare(String(password || ""), user.password);
+            } catch {
+                isMatch = false;
+            }
+        } else if (password && password === user.password) {
+            // Legacy plaintext row: accept once and store it hashed from now on.
+            // Never compared in plaintext against a hash, so a leaked hash can't be used as a password.
+            isMatch = true;
+            const { error: rehashError } = await supabase
+                .from("User_Details")
+                .update({ password: await bcrypt.hash(String(password), 10) })
+                .eq("id", user.id);
+            if (rehashError) console.error("Failed to rehash legacy password:", rehashError.message);
         }
 
         if (!isMatch) {
@@ -199,41 +208,7 @@ export const loginUser = async (req, res) => {
     }
 };
 
-// ---------- 2. CHECK ACCOUNT STATUS (does this email already have a PIN set up?) ----------
-export const checkAccountStatus = async (req, res) => {
-    const { email_id: rawEmail } = req.body || {};
-    if (!rawEmail) {
-        return res.status(400).json({
-            success: false,
-            message: "email_id is required"
-        });
-    }
-    const email_id = rawEmail.trim().toLowerCase();
-
-    try {
-        // is_Valid means "allowed to use the app" (an account-enablement flag),
-        // not "has a password". Whether a password/PIN exists is what the
-        // password column tells us.
-        const { data: user } = await supabase
-            .from("User_Details")
-            .select("password")
-            .eq("email_id", email_id)
-            .maybeSingle();
-
-        res.json({
-            success: true,
-            hasPin: !!(user && user.password)
-        });
-
-    } catch (err) {
-        res.status(500).json({
-            success: false,
-            message: "Server Error"
-        });
-    }
-};
-
-// ---------- 3. VERIFY GOOGLE SIGN-IN ----------
+// ---------- 2. VERIFY GOOGLE SIGN-IN ----------
 // Google vouches for the email. Only accounts already in User_Details with
 // is_Valid = true may continue. A complete profile gets a 30-day app session
 // right away; otherwise a setup token for the first-time profile form.
@@ -332,7 +307,13 @@ export const verifyGoogleSignIn = async (req, res) => {
     }
 };
 
-// ---------- 4. SEND EMAIL VERIFICATION CODE (admin "forgot password") ----------
+// ---------- 3. SEND EMAIL VERIFICATION CODE (admin "forgot password") ----------
+// 6-digit code from a CSPRNG, valid 5 minutes, at most one new code a minute per email,
+// and a code is thrown away after OTP_MAX_ATTEMPTS wrong guesses.
+const OTP_TTL_SECONDS = 300;
+const OTP_RESEND_SECONDS = 60;
+const OTP_MAX_ATTEMPTS = 5;
+
 export const sendAuthVerification = async (req, res) => {
     if (!req.body) {
         return res.status(400).json({
@@ -350,11 +331,18 @@ export const sendAuthVerification = async (req, res) => {
     const email_id = rawEmail.trim().toLowerCase();
 
     try {
-        // Generate a 4-digit code
-        const code = String(Math.floor(1000 + Math.random() * 9000));
+        // NX: only one new code per email per minute
+        const allowed = await redis.set(`auth_otp_cooldown:${email_id}`, "1", { nx: true, ex: OTP_RESEND_SECONDS });
+        if (!allowed) {
+            return res.status(429).json({
+                success: false,
+                message: "A code was sent recently. Please wait a minute before requesting another."
+            });
+        }
 
-        // Save code to Redis with 5 minutes expiry
-        await redis.set(`auth_otp:${email_id}`, code, { ex: 300 });
+        const code = String(crypto.randomInt(0, 1000000)).padStart(6, "0");
+        await redis.set(`auth_otp:${email_id}`, code, { ex: OTP_TTL_SECONDS });
+        await redis.del(`auth_otp_attempts:${email_id}`);
 
         const transporter = nodemailer.createTransport({
             host: process.env.SMTP_HOST || "smtp.gmail.com",
@@ -382,7 +370,7 @@ export const sendAuthVerification = async (req, res) => {
             html: `
                 <div style="font-family: Arial, sans-serif; padding: 20px; color: #333;">
                     <h2 style="color: #4F46E5;">Verify Your Email</h2>
-                    <p>Use the following 4-digit code to verify your university email and secure your account:</p>
+                    <p>Use the following 6-digit code to verify your university email and secure your account:</p>
                     <p style="font-size: 28px; font-weight: bold; letter-spacing: 6px; color: #4F46E5; margin: 20px 0;">${code}</p>
                     <p>This code is valid for 5 minutes. Please do not share this code with anyone.</p>
                 </div>
@@ -404,7 +392,7 @@ export const sendAuthVerification = async (req, res) => {
     }
 };
 
-// ---------- 5. VERIFY EMAIL CODE ----------
+// ---------- 4. VERIFY EMAIL CODE ----------
 // A correct code for an active account returns a setup token for /setup-pin.
 export const verifyAuthCode = async (req, res) => {
     const { email_id: rawEmail, code } = req.body || {};
@@ -426,13 +414,22 @@ export const verifyAuthCode = async (req, res) => {
             });
         }
         if (String(savedCode).trim() !== cleanCode) {
+            const attempts = await redis.incr(`auth_otp_attempts:${email_id}`);
+            if (attempts === 1) await redis.expire(`auth_otp_attempts:${email_id}`, OTP_TTL_SECONDS);
+            if (attempts >= OTP_MAX_ATTEMPTS) {
+                await redis.del(`auth_otp:${email_id}`, `auth_otp_attempts:${email_id}`);
+                return res.status(429).json({
+                    success: false,
+                    message: "Too many wrong attempts. Please request a new code."
+                });
+            }
             return res.status(400).json({
                 success: false,
                 message: "Invalid verification code. Please check and try again."
             });
         }
 
-        await redis.del(`auth_otp:${email_id}`);
+        await redis.del(`auth_otp:${email_id}`, `auth_otp_attempts:${email_id}`);
 
         const { data: user } = await supabase
             .from("User_Details")
@@ -461,7 +458,7 @@ export const verifyAuthCode = async (req, res) => {
     }
 };
 
-// ---------- 6. SET / RESET PIN (requires a setup token) ----------
+// ---------- 5. SET / RESET PIN (requires a setup token) ----------
 export const registerOrUpdateUserPin = async (req, res) => {
     const setup = readSetupToken(req);
     if (!setup) {
@@ -516,7 +513,7 @@ export const registerOrUpdateUserPin = async (req, res) => {
     }
 };
 
-// ---------- 7. COMPLETE PROFILE (multipart: display_name, phone_number, blood_group, photo?) ----------
+// ---------- 6. COMPLETE PROFILE (multipart: display_name, phone_number, blood_group, photo?) ----------
 // Called with a setup token (first sign-in through Google) or a session token
 // (signed in but details are still missing). Every missing field is required;
 // fields that are already filled may be left out. Returns a 30-day app session.
@@ -600,7 +597,7 @@ export const completeProfile = async (req, res) => {
     }
 };
 
-// ---------- 8. RENEW APP SESSION ----------
+// ---------- 7. RENEW APP SESSION ----------
 // The app calls this each time it opens. A still-valid app session (from Google
 // sign-in) is swapped for a fresh 30-day one, so people stay signed in until
 // they log out. Disabled accounts (is_Valid false) are refused, signing them out.

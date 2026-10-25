@@ -71,23 +71,6 @@ const notifyHostelAdmins = async (grievance, studentRollNo) => {
     });
 };
 
-// 1. GET ALL UNRESOLVED GRIEVANCES
-export const getUnresolvedGrievances = async (req, res) => {
-    try {
-        const { data, error } = await supabase
-           .from("Hostel_Grievances")// Adjust to your exact table name if different
-            .select("*")
-            .eq("is_resolved", false);
-
-        if (error) throw error;
-
-        return res.status(200).json({ success: true, count: data.length, grievances: data });
-    } catch (err) {
-        console.error(err);
-        return res.status(500).json({ success: false, message: "Error fetching unresolved grievances."});
-    }
-};
-
 // 2. UPLOAD NEW GRIEVANCE (Student)
 export const uploadGrievance = async (req, res) => {
     const { description, proof, grievance_type } = req.body;

@@ -1,4 +1,3 @@
-import jwt from "jsonwebtoken";
 import supabase from "../config/Supabase.js";
 
 // =====================================
@@ -7,21 +6,8 @@ import supabase from "../config/Supabase.js";
 
 export const getPostComments = async (req, res) => {
     try {
-        const authHeader = req.headers.authorization;
-
-        if (!authHeader || !authHeader.startsWith("Bearer ")) {
-            return res.status(401).json({
-                success: false,
-                message: "Access token missing"
-            });
-        }
-
-        const token = authHeader.split(" ")[1];
-
-        const decoded = jwt.verify(
-            token,
-            process.env.JWT_SECRET
-        );
+        // Signed-in user, checked by the protect middleware on the route
+        const decoded = req.user;
 
         const { id } = req.params;
 
@@ -82,21 +68,8 @@ export const getPostComments = async (req, res) => {
 
 export const addPostComment = async (req, res) => {
     try {
-        const authHeader = req.headers.authorization;
-
-        if (!authHeader || !authHeader.startsWith("Bearer ")) {
-            return res.status(401).json({
-                success: false,
-                message: "Access token missing"
-            });
-        }
-
-        const token = authHeader.split(" ")[1];
-
-        const decoded = jwt.verify(
-            token,
-            process.env.JWT_SECRET
-        );
+        // Signed-in user, checked by the protect middleware on the route
+        const decoded = req.user;
 
         const { id } = req.params;
         const { comment } = req.body;
@@ -196,21 +169,8 @@ export const addPostComment = async (req, res) => {
 
 export const deletePostComment = async (req, res) => {
     try {
-        const authHeader = req.headers.authorization;
-
-        if (!authHeader || !authHeader.startsWith("Bearer ")) {
-            return res.status(401).json({
-                success: false,
-                message: "Access token missing"
-            });
-        }
-
-        const token = authHeader.split(" ")[1];
-
-        const decoded = jwt.verify(
-            token,
-            process.env.JWT_SECRET
-        );
+        // Signed-in user, checked by the protect middleware on the route
+        const decoded = req.user;
 
         const {
             id,

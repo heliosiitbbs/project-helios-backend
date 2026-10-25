@@ -5,9 +5,7 @@ import {
   updateMySubjectSelections,
   getAllHolidays,
   addHoliday,
-  deleteHoliday,
-  getAdminTimetableSlots,
-  updateAdminTimetableSlots
+  deleteHoliday
 } from "../controllers/timetableController.js";
 import {
   getTimetableBranches,
@@ -48,7 +46,4 @@ router.post("/admin/timings/apply", protect, timetableAdminRoles, applyTimetable
 router.post("/admin/timings", protect, timetableAdminRoles, addAdminTiming);
 router.patch("/admin/timings/:id", protect, timetableAdminRoles, updateAdminTiming);
 router.delete("/admin/timings/:id", protect, timetableAdminRoles, deleteAdminTiming);
-// Admin slots routes (public to support login-less frontend)
-router.get("/slots", getAdminTimetableSlots);
-router.post("/slots", updateAdminTimetableSlots);
 export default router;

@@ -2,7 +2,6 @@ import express from "express";
 
 import {
     getAllWebsites,
-    getWebsiteByName,
     addWebsite,
     updateWebsite,
     deleteWebsite
@@ -15,12 +14,6 @@ router.get(
     "/all-websites",
     protect,
     getAllWebsites
-);
-
-router.get(
-    "/website/:website_name",
-    protect,
-    getWebsiteByName
 );
 
 router.post(
