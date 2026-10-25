@@ -234,6 +234,7 @@ export const addStudentsBulk = async (req, res) => {
 // expiry_date mirrors entry_end, so the nightly expiry job archives and removes the account afterwards.
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const VISIT_TYPES = ["Event", "Internship", "Academic / Department Visit", "Official / Business Visit", "Other"];
 
 // Visit details shared by one visitor or a whole spreadsheet; returns { visit } or { error }
 const readVisit = (input) => {
@@ -241,6 +242,10 @@ const readVisit = (input) => {
     const end = String(input.entry_end || "");
     const contact = String(input.campus_contact || "").replace(/\s+/g, " ").trim();
     const purpose = String(input.purpose || "").replace(/\s+/g, " ").trim();
+    const visitType = String(input.visit_type || "").trim();
+    const destination = String(input.destination || "").replace(/\s+/g, " ").trim();
+    const hostContact = String(input.host_contact || "").trim();
+    const groupName = String(input.group_name || "").replace(/\s+/g, " ").trim();
     if (!DATE_RE.test(start) || !DATE_RE.test(end)) return { error: "Choose the first and last day of the visit" };
     const entryStart = new Date(`${start}T00:00:00+05:30`);
     const entryEnd = new Date(`${end}T23:59:59+05:30`);
@@ -249,12 +254,18 @@ const readVisit = (input) => {
     if (entryEnd <= new Date()) return { error: "The visit must end in the future" };
     if (contact.length < 2) return { error: "Enter the campus contact" };
     if (purpose.length < 2) return { error: "Enter the purpose of the visit" };
+    if (!VISIT_TYPES.includes(visitType)) return { error: `Visit type must be one of: ${VISIT_TYPES.join(", ")}` };
+    if (destination.length < 2) return { error: "Enter where on campus they are going" };
     return {
         visit: {
             entry_start: entryStart.toISOString(),
             entry_end: entryEnd.toISOString(),
             campus_contact: contact.slice(0, 200),
-            purpose: purpose.slice(0, 500)
+            purpose: purpose.slice(0, 500),
+            visit_type: visitType,
+            destination: destination.slice(0, 200),
+            host_contact: hostContact.slice(0, 254) || null,
+            group_name: groupName.slice(0, 200) || null
         }
     };
 };
@@ -327,7 +338,7 @@ export const listVisitors = async (req, res) => {
         if (error) throw error;
 
         const { data: visits, error: visitError } = users.length
-            ? await supabase.from("Visitor_Details").select("user_id, entry_start, entry_end, campus_contact, purpose").in("user_id", users.map((u) => u.id))
+            ? await supabase.from("Visitor_Details").select("user_id, entry_start, entry_end, campus_contact, purpose, visit_type, destination, host_contact, group_name").in("user_id", users.map((u) => u.id))
             : { data: [], error: null };
         if (visitError) throw visitError;
         const visitOf = Object.fromEntries(visits.map((v) => [v.user_id, v]));
@@ -345,6 +356,10 @@ export const listVisitors = async (req, res) => {
                     entry_end: v.entry_end || u.expiry_date || null,
                     campus_contact: v.campus_contact || null,
                     purpose: v.purpose || null,
+                    visit_type: v.visit_type || null,
+                    destination: v.destination || null,
+                    host_contact: v.host_contact || null,
+                    group_name: v.group_name || null,
                     active: u.is_Valid === true
                 };
                 return { ...row, status: visitStatus(row) };
@@ -355,7 +370,8 @@ export const listVisitors = async (req, res) => {
     }
 };
 
-// POST /api/people/visitors { name, email, phone?, entry_start, entry_end, campus_contact, purpose }
+// POST /api/people/visitors { name, email, phone?, entry_start, entry_end, campus_contact, purpose,
+//                            visit_type, destination, host_contact?, group_name? }
 export const addVisitor = async (req, res) => {
     try {
         const { person, error: personError } = readVisitorPerson(req.body || {});
@@ -411,7 +427,7 @@ export const previewVisitors = async (req, res) => {
     }
 };
 
-// POST /api/people/visitors/bulk { visitors: [{ name, email, phone? }], entry_start, entry_end, campus_contact, purpose }
+// POST /api/people/visitors/bulk { visitors: [{ name, email, phone? }], ...the same visit fields as above }
 export const addVisitorsBulk = async (req, res) => {
     try {
         const input = Array.isArray(req.body?.visitors) ? req.body.visitors : [];
