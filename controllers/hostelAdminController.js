@@ -242,7 +242,7 @@ export const setStaffPin = async (req, res) => {
         const pin = given ?? String(crypto.randomInt(0, 1000000)).padStart(6, "0");
         const { error: updateError } = await supabase
             .from("hostel_staff")
-            .update({ pin_hash: await bcrypt.hash(pin, 10) })
+            .update({ pin_hash: await bcrypt.hash(pin, 10), must_change_password: true })
             .eq("id", member.id);
         if (updateError) {
             if (updateError.code === "23505") return fail(res, 409, DUPLICATE_PHONE);

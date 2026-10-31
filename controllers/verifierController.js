@@ -162,7 +162,7 @@ export const verifierScanPass = async (req, res) => {
     if (!pass_id) return fail(res, 400, "pass_id is required.");
 
     try {
-        return await checkInPass(res, req.event, pass_id);
+        return await checkInPass(res, req.event, pass_id, req.verifier.username);
     } catch (err) {
         console.error(err);
         return fail(res, 500, "Server Error scanning pass.");
@@ -298,6 +298,86 @@ export const deleteVerifier = async (req, res) => {
         if (!data?.length) return fail(res, 404, "Verifier not found.");
 
         return res.status(200).json({ success: true, message: "Verifier removed." });
+    } catch (err) {
+        return serverError(res, err);
+    }
+};
+
+// Applicant ids are whatever the event admin uploaded: roll numbers, emails, or
+// (older events) User_Details ids. Look up a display name for each, where one exists.
+const applicantNames = async (ids) => {
+    const names = new Map();
+    const emails = ids.filter((v) => v.includes("@"));
+    const userIds = ids.filter((v) => /^\d+$/.test(v));
+    const rolls = ids.filter((v) => !v.includes("@") && !/^\d+$/.test(v));
+    const nameOf = (u) => u?.display_name || u?.["User Name"] || null;
+
+    for (let i = 0; i < rolls.length; i += 300) {
+        const { data, error } = await supabase
+            .from("Student_Details")
+            .select('"Roll Number", User_Details("User Name", display_name)')
+            .in("Roll Number", rolls.slice(i, i + 300));
+        if (error) throw error;
+        data.forEach((s) => names.set(s["Roll Number"], nameOf(s.User_Details)));
+    }
+    for (let i = 0; i < emails.length; i += 300) {
+        const { data, error } = await supabase
+            .from("User_Details")
+            .select('email_id, "User Name", display_name')
+            .in("email_id", emails.slice(i, i + 300));
+        if (error) throw error;
+        data.forEach((u) => names.set(u.email_id, nameOf(u)));
+    }
+    for (let i = 0; i < userIds.length; i += 300) {
+        const { data, error } = await supabase
+            .from("User_Details")
+            .select('id, "User Name", display_name')
+            .in("id", userIds.slice(i, i + 300));
+        if (error) throw error;
+        data.forEach((u) => names.set(String(u.id), nameOf(u)));
+    }
+    return names;
+};
+
+// GET /api/verifiers/usage/:eventId - who has used their pass for this event, and when
+export const getPassUsage = async (req, res) => {
+    try {
+        const event = await findEvent(req.params.eventId);
+        if (!event) return fail(res, 404, "Event not found.");
+
+        const passes = [];
+        for (let from = 0; ; from += 1000) {
+            const { data, error } = await supabase
+                .from("event_passes")
+                .select("id, applicant_id, has_completed, used_at, used_by")
+                .eq("event_id", event.event_id)
+                .range(from, from + 999);
+            if (error) throw error;
+            passes.push(...data);
+            if (data.length < 1000) break;
+        }
+
+        const used = passes.filter((p) => p.has_completed);
+        const names = await applicantNames([...new Set(used.map((p) => String(p.applicant_id)))]);
+
+        // Newest check-in first; passes used before times were recorded go last
+        const checkIns = used
+            .map((p) => ({
+                id: p.id,
+                applicant_id: p.applicant_id,
+                name: names.get(String(p.applicant_id)) || null,
+                used_at: p.used_at,
+                used_by: p.used_by
+            }))
+            .sort((a, b) => (b.used_at || "").localeCompare(a.used_at || ""));
+
+        return res.status(200).json({
+            success: true,
+            event: publicEvent(event),
+            total: passes.length,
+            used: used.length,
+            check_ins: checkIns
+        });
     } catch (err) {
         return serverError(res, err);
     }

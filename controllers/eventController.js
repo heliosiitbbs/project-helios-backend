@@ -313,7 +313,7 @@ export const scanPass = async (req, res) => {
             });
         }
 
-        return await checkInPass(res, event, pass_id);
+        return await checkInPass(res, event, pass_id, `Door code · ${req.user.e_mail || req.user.id}`);
 
     } catch (err) {
         console.error(err);
@@ -326,8 +326,9 @@ export const scanPass = async (req, res) => {
 // Marks one pass of `event` used and sends the result. Shared by the
 // verification-code scanner above and the verifier-account scanner
 // (verifierController). The pass is flipped with a single conditional update,
-// so two scanners can never both accept the same pass.
-export const checkInPass = async (res, event, pass_id) => {
+// so two scanners can never both accept the same pass. `scannedBy` is saved
+// with the time so the admin can see who let each person in.
+export const checkInPass = async (res, event, pass_id, scannedBy) => {
     if (!UUID_PATTERN.test(pass_id)) {
         return res.status(400).json({
             success: false,
@@ -347,7 +348,7 @@ export const checkInPass = async (res, event, pass_id) => {
     // Only flips an unused pass that belongs to this event
     const { data: used, error: updateError } = await supabase
         .from("event_passes")
-        .update({ has_completed: true })
+        .update({ has_completed: true, used_at: new Date().toISOString(), used_by: scannedBy || null })
         .eq("id", pass_id)
         .eq("event_id", event.event_id)
         .eq("has_completed", false)

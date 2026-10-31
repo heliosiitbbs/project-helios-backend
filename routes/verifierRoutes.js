@@ -7,7 +7,8 @@ import {
     listVerifiers,
     createVerifiers,
     resetVerifierPassword,
-    deleteVerifier
+    deleteVerifier,
+    getPassUsage
 } from "../controllers/verifierController.js";
 import { protect, authorize } from "../middlewares/authMiddleware.js";
 
@@ -21,6 +22,7 @@ router.post("/scan", protectVerifier, verifierScanPass);
 // Super Admin dashboard: Credentials -> Verifiers
 const superAdmin = authorize("Super Admin");
 router.get("/", protect, superAdmin, listVerifiers);
+router.get("/usage/:eventId", protect, superAdmin, getPassUsage);
 router.post("/", protect, superAdmin, createVerifiers);
 router.post("/:id/reset-password", protect, superAdmin, resetVerifierPassword);
 router.delete("/:id", protect, superAdmin, deleteVerifier);

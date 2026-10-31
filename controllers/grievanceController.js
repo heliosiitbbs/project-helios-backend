@@ -1,22 +1,147 @@
 import supabase from "../config/Supabase.js";
-import nodemailer from "nodemailer";
+import { sendMail, mailConfigured } from "../utils/mailer.js";
 
 const escapeHtml = (text) =>
     String(text ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 
+const formatIST = (iso) =>
+    new Date(iso || Date.now()).toLocaleString("en-IN", {
+        timeZone: "Asia/Kolkata",
+        weekday: "short",
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+    }) + " IST";
+
+// The email a hostel admin gets for a new grievance: subject, plain text and HTML.
+// Kept separate from the sending so the layout can be previewed on its own.
+export const grievanceEmail = ({ grievance, hostel, student, dashboard }) => {
+    const ref = `#${grievance.id}`;
+    const category = grievance["Grievance Type"] || "General";
+    const submitted = formatIST(grievance.created_at);
+    const location = [student.room && `Room ${student.room}`, hostel].filter(Boolean).join(", ");
+
+    const details = [
+        ["Reference", ref],
+        ["Category", category],
+        ["Submitted", submitted],
+        ["Student", student.name],
+        ["Roll number", student.roll],
+        ["Location", location],
+        ["Phone", student.phone],
+    ].filter(([, value]) => value);
+
+    const subject = `New grievance ${ref}: ${category}${student.room ? ` · Room ${student.room}` : ""} · ${hostel}`;
+
+    const text = [
+        `Dear ${hostel} Hostel Admin,`,
+        "",
+        "A new grievance has been submitted on Helios and is waiting to be assigned.",
+        "",
+        ...details.map(([label, value]) => `${label}: ${value}`),
+        "",
+        "Description:",
+        grievance.description,
+        "",
+        ...(grievance.proof ? [`Attached photo: ${grievance.proof}`, ""] : []),
+        `To assign it to a staff member, open the Helios admin dashboard: ${dashboard}`,
+        "",
+        "Regards,",
+        "Helios, IIT Bhubaneswar",
+        "",
+        "This is an automated message. Please do not reply to this email.",
+    ].join("\n");
+
+    const row = ([label, value]) => `
+        <tr>
+            <td style="padding: 8px 0; width: 120px; color: #6B6A75; font-size: 13px; vertical-align: top;">${escapeHtml(label)}</td>
+            <td style="padding: 8px 0; color: #17171C; font-size: 14px; font-weight: 600; vertical-align: top;">${escapeHtml(value)}</td>
+        </tr>`;
+
+    const html = `<!doctype html>
+<html>
+<body style="margin: 0; padding: 0; background: #F4F3EF;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background: #F4F3EF; padding: 32px 12px;">
+        <tr><td align="center">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width: 560px; background: #FFFFFF; border-radius: 16px; overflow: hidden; font-family: Arial, Helvetica, sans-serif;">
+                <tr>
+                    <td style="background: #17171C; padding: 22px 28px;">
+                        <div style="color: #D9F25A; font-size: 12px; font-weight: 700; letter-spacing: 1.5px;">HELIOS · ${escapeHtml(hostel.toUpperCase())} GRIEVANCES</div>
+                        <div style="color: #FFFFFF; font-size: 22px; font-weight: 700; margin-top: 6px;">New grievance ${escapeHtml(ref)}</div>
+                    </td>
+                </tr>
+                <tr>
+                    <td style="padding: 26px 28px 8px;">
+                        <p style="margin: 0 0 6px; color: #17171C; font-size: 15px;">Dear ${escapeHtml(hostel)} Hostel Admin,</p>
+                        <p style="margin: 0; color: #3D3D46; font-size: 15px; line-height: 1.55;">A new grievance has been submitted on Helios and is waiting to be assigned.</p>
+                    </td>
+                </tr>
+                <tr>
+                    <td style="padding: 12px 28px;">
+                        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-top: 1px solid #ECEAE3; border-bottom: 1px solid #ECEAE3;">
+                            ${details.map(row).join("")}
+                        </table>
+                    </td>
+                </tr>
+                <tr>
+                    <td style="padding: 8px 28px 4px;">
+                        <div style="color: #6B6A75; font-size: 13px; margin-bottom: 8px;">Description</div>
+                        <div style="background: #F7F6F2; border-left: 4px solid #17171C; border-radius: 8px; padding: 14px 16px; color: #17171C; font-size: 15px; line-height: 1.6; white-space: pre-wrap;">${escapeHtml(grievance.description)}</div>
+                    </td>
+                </tr>
+                ${grievance.proof ? `
+                <tr>
+                    <td style="padding: 16px 28px 4px;">
+                        <div style="color: #6B6A75; font-size: 13px; margin-bottom: 8px;">Attached photo</div>
+                        <a href="${escapeHtml(grievance.proof)}"><img src="${escapeHtml(grievance.proof)}" alt="Photo attached to the grievance" width="504" style="display: block; width: 100%; max-width: 504px; border-radius: 10px; border: 1px solid #ECEAE3;"></a>
+                    </td>
+                </tr>` : ""}
+                <tr>
+                    <td style="padding: 24px 28px 8px;">
+                        <a href="${escapeHtml(dashboard)}" style="display: inline-block; background: #17171C; color: #D9F25A; text-decoration: none; font-size: 14px; font-weight: 700; padding: 14px 24px; border-radius: 999px;">Assign in Helios admin</a>
+                    </td>
+                </tr>
+                <tr>
+                    <td style="padding: 18px 28px 26px; color: #3D3D46; font-size: 14px; line-height: 1.55;">
+                        Regards,<br>Helios, IIT Bhubaneswar
+                    </td>
+                </tr>
+                <tr>
+                    <td style="padding: 14px 28px; background: #F7F6F2; color: #8A8994; font-size: 12px; line-height: 1.5;">
+                        This is an automated message sent because you are the Hostel Admin for ${escapeHtml(hostel)}. Please do not reply to this email.
+                    </td>
+                </tr>
+            </table>
+        </td></tr>
+    </table>
+</body>
+</html>`;
+
+    return { subject, text, html };
+};
+
 // Emails the Hostel Admin(s) of the student's hostel that a new grievance came in.
-// Fire-and-forget from uploadGrievance: a mail problem never fails the submission.
+// Fire-and-forget from uploadGrievance: a mail problem never fails the submission,
+// but every reason a mail doesn't go out is logged.
 const notifyHostelAdmins = async (grievance, studentRollNo) => {
-    if (!process.env.SMTP_USER || !process.env.SMTP_PASS) return;
+    if (!mailConfigured()) {
+        console.warn(`Grievance #${grievance.id}: email isn't configured (SMTP_USER + SMTP_PASS) - hostel admin not emailed.`);
+        return;
+    }
 
     const { data: student, error: studentError } = await supabase
         .from("Student_Details")
-        .select('"Roll Number", "Room No", Hostel_Details, User_Details("User Name", display_name)')
+        .select('"Roll Number", "Room No", Hostel_Details, User_Details("User Name", display_name, phone_number)')
         .eq("Roll Number", studentRollNo)
         .maybeSingle();
     if (studentError) throw studentError;
     const hostel = student?.Hostel_Details;
-    if (!hostel) return;
+    if (!hostel) {
+        console.warn(`Grievance #${grievance.id}: student ${studentRollNo} has no hostel on record - hostel admin not emailed.`);
+        return;
+    }
 
     const { data: admins, error: adminError } = await supabase
         .from("User_Details")
@@ -27,48 +152,25 @@ const notifyHostelAdmins = async (grievance, studentRollNo) => {
     if (adminError) throw adminError;
     const recipients = (admins || []).map((a) => a.email_id).filter(Boolean);
     if (!recipients.length) {
-        console.warn(`New grievance in ${hostel}, but no active Hostel Admin account has that hostel - no email sent.`);
+        console.warn(`Grievance #${grievance.id}: no active Hostel Admin account for hostel "${hostel}" - no email sent.`);
         return;
     }
 
-    const name = student.User_Details?.["User Name"] || student.User_Details?.display_name || "A student";
-    const type = grievance["Grievance Type"] || "General";
-    const roomNo = student["Room No"] ? String(student["Room No"]).trim() : "";
-    const dashboard = process.env.ADMIN_DASHBOARD_URL || "https://helios-admin-frontend.vercel.app";
-
-    const transporter = nodemailer.createTransport({
-        host: process.env.SMTP_HOST || "smtp.gmail.com",
-        port: Number(process.env.SMTP_PORT) || 587,
-        secure: Number(process.env.SMTP_PORT) === 465,
-        auth: {
-            user: process.env.SMTP_USER,
-            pass: process.env.SMTP_PASS.replace(/\s+/g, ""),
+    const person = student.User_Details || {};
+    const { subject, text, html } = grievanceEmail({
+        grievance,
+        hostel,
+        dashboard: process.env.ADMIN_DASHBOARD_URL || "https://helios-admin-frontend.vercel.app",
+        student: {
+            name: person.display_name || person["User Name"] || studentRollNo,
+            roll: student["Roll Number"],
+            room: student["Room No"] ? String(student["Room No"]).trim() : "",
+            phone: person.phone_number || "",
         },
-        // Fail fast where outbound SMTP is silently dropped (see authController)
-        connectionTimeout: 8000,
-        greetingTimeout: 8000,
-        socketTimeout: 8000,
     });
 
-    await transporter.sendMail({
-        from: `"Helios Grievances" <${process.env.SMTP_FROM || process.env.SMTP_USER || "no-reply@helios.iitbbs.ac.in"}>`,
-        to: recipients,
-        subject: `New ${type} grievance - ${hostel} - Helios IIT BBS`,
-        // Room No: / Name: / Grievance: / link - room only when known
-        text:
-            (roomNo ? `Room No: ${roomNo}\n` : "") +
-            `Name: ${name}\n` +
-            `Grievance: ${grievance.description}\n\n` +
-            `In order to allot this to someone, please follow the link: ${dashboard}`,
-        html: `
-            <div style="font-family: Arial, sans-serif; max-width: 520px; color: #181925; font-size: 15px; line-height: 1.6;">
-                ${roomNo ? `<p style="margin: 0;"><b>Room No:</b> ${escapeHtml(roomNo)}</p>` : ""}
-                <p style="margin: 0;"><b>Name:</b> ${escapeHtml(name)}</p>
-                <p style="margin: 0; white-space: pre-wrap;"><b>Grievance:</b> ${escapeHtml(grievance.description)}</p>
-                <p style="margin: 20px 0 0;">In order to allot this to someone, please follow the link: <a href="${escapeHtml(dashboard)}">${escapeHtml(dashboard)}</a></p>
-            </div>
-        `,
-    });
+    await sendMail({ fromName: "Helios Grievances", to: recipients, subject, text, html });
+    console.log(`Grievance #${grievance.id}: emailed ${recipients.join(", ")}`);
 };
 
 // 2. UPLOAD NEW GRIEVANCE (Student)
@@ -136,7 +238,7 @@ export const uploadGrievance = async (req, res) => {
 
         if (error) throw error;
 
-        notifyHostelAdmins(data, student_id).catch((err) => console.error("Failed to email hostel admins about grievance:", err.message));
+        notifyHostelAdmins(data, student_id).catch((err) => console.error(`Grievance #${data.id}: failed to email the hostel admin:`, err.message));
 
         return res.status(201).json({ success: true, message: "Grievance submitted successfully.", grievance: data });
     } catch (err) {

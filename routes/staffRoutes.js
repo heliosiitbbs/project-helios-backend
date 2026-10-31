@@ -1,10 +1,11 @@
 import express from "express";
-import { staffLogin, protectStaff, getMyGrievances, addGrievanceUpdate } from "../controllers/staffController.js";
+import { staffLogin, protectStaff, requirePasswordChanged, changeStaffPassword, getMyGrievances, addGrievanceUpdate } from "../controllers/staffController.js";
 
 const router = express.Router();
 
 router.post("/login", staffLogin);
-router.get("/grievances", protectStaff, getMyGrievances);
-router.post("/grievances/:id/updates", protectStaff, addGrievanceUpdate);
+router.post("/change-password", protectStaff, changeStaffPassword);
+router.get("/grievances", protectStaff, requirePasswordChanged, getMyGrievances);
+router.post("/grievances/:id/updates", protectStaff, requirePasswordChanged, addGrievanceUpdate);
 
 export default router;
