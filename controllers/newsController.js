@@ -242,6 +242,9 @@ export const updateNews = async (req, res) => {
         .eq("id", id)
         .maybeSingle();
       wasPublished = existing?.status === "published";
+      // The post's date is created_at - a draft published today should read today,
+      // not the day it was first drafted
+      if (!wasPublished) updateData.created_at = new Date().toISOString();
     }
 
     const { data, error } = await supabase

@@ -6,7 +6,8 @@ import {
     assignGrievance,
     markResolved,
     getGrievanceHistory,
-    getAllGrievances
+    getAllGrievances,
+    deleteGrievance
 } from "../controllers/grievanceController.js";
 
 const router = express.Router();
@@ -19,5 +20,6 @@ router.post("/assign-grievance", authorize('Admin'), assignGrievance);
 router.post("/mark-resolved", markResolved);
 router.get("/get-grievance-history", getGrievanceHistory);
 router.get("/get-all-grievances", authorize('Admin'), getAllGrievances);
+router.delete("/:id", deleteGrievance);
 
 export default router;

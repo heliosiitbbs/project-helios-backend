@@ -75,6 +75,7 @@ const NOTIFICATION_CATEGORY = {
     rides: "applied",
     bug: "applied",
     timetable: "applied",
+    arp: "applied",
     transport: "mess_transport",
     news: "oracle"
 };

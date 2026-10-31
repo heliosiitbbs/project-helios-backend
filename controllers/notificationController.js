@@ -3,7 +3,8 @@ import supabase from "../config/Supabase.js";
 // POST /api/notifications/register-token
 // A token belongs to one device; re-registering (app reinstall, different
 // user logging into the same device) just reassigns the existing row's
-// user_id rather than creating a duplicate.
+// user_id rather than creating a duplicate. Each user keeps one token - the
+// latest device to register.
 export const registerPushToken = async (req, res) => {
     try {
         const { token, platform } = req.body;
@@ -34,6 +35,16 @@ export const registerPushToken = async (req, res) => {
                 message: "Error registering push token"
             });
         }
+
+        // Only the device that registered most recently keeps receiving this user's
+        // pushes. Every reinstall / dev-client rebuild gets a new token, and stale ones
+        // that still reach the same phone made each notification arrive several times.
+        const { error: cleanupError } = await supabase
+            .from("push_tokens")
+            .delete()
+            .eq("user_id", req.user.id)
+            .neq("expo_push_token", token);
+        if (cleanupError) console.error("Failed to remove old push tokens", cleanupError);
 
         return res.status(200).json({
             success: true,

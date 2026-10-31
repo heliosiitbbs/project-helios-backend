@@ -208,6 +208,36 @@ export const markResolved = async (req, res) => {
     }
 };
 
+// DELETE /api/grievances/:id - the student who filed a grievance can withdraw it
+export const deleteGrievance = async (req, res) => {
+    if (!req.user.rollnumber) {
+        return res.status(403).json({ success: false, message: "Only the student who filed a grievance can delete it." });
+    }
+
+    try {
+        const { data: grievance, error: findError } = await supabase
+            .from("Hostel_Grievances")
+            .select("id")
+            .eq("id", req.params.id)
+            .eq("student_id", req.user.rollnumber)
+            .maybeSingle();
+        if (findError) throw findError;
+        if (!grievance) return res.status(404).json({ success: false, message: "Grievance record not found." });
+
+        // Staff progress notes hang off the grievance
+        const { error: updatesError } = await supabase.from("grievance_updates").delete().eq("grievance_id", grievance.id);
+        if (updatesError) throw updatesError;
+
+        const { error } = await supabase.from("Hostel_Grievances").delete().eq("id", grievance.id);
+        if (error) throw error;
+
+        return res.status(200).json({ success: true, message: "Grievance deleted." });
+    } catch (err) {
+        console.error(err);
+        return res.status(500).json({ success: false, message: "Error deleting grievance." });
+    }
+};
+
 // 5. GET GRIEVANCE HISTORY BY STUDENT
 export const getGrievanceHistory = async (req, res) => {
     const requestedStudentId = req.query?.student_id || req.body?.student_id;

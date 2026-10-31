@@ -81,19 +81,12 @@ message:
 
 // =======================
 // STEP 4
-// CHECK PHOTO
+// PHOTO IS OPTIONAL - steps 5-8 only run when one was attached
 // =======================
 
-if(!req.file){
+let photoUrl = null;
 
-return res.status(400).json({
-success:false,
-message:"Photo required"
-});
-
-}
-
-
+if(req.file){
 
 // =======================
 // STEP 5
@@ -201,8 +194,10 @@ supabase.storage
 uploadData.path
 );
 
-const photoUrl =
+photoUrl =
 publicUrlData.publicUrl;
+
+}
 
 
 
