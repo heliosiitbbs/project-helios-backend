@@ -126,3 +126,77 @@ export const dismissNotification = async (req, res) => {
         return res.status(500).json({ success: false, message: "Server Error" });
     }
 };
+
+const PREFERENCE_FIELDS = ["all_enabled", "applied", "mess_transport", "oracle"];
+const DEFAULT_PREFERENCES = { all_enabled: true, applied: true, mess_transport: true, oracle: true };
+
+// GET /api/notifications/preferences - no row yet means everything is on
+export const getNotificationPreferences = async (req, res) => {
+    try {
+        const { data, error } = await supabase
+            .from("notification_preferences")
+            .select(PREFERENCE_FIELDS.join(", "))
+            .eq("user_id", req.user.id)
+            .maybeSingle();
+
+        if (error) {
+            console.error(error);
+            return res.status(500).json({ success: false, message: "Error fetching notification preferences" });
+        }
+
+        return res.status(200).json({ success: true, preferences: { ...DEFAULT_PREFERENCES, ...data } });
+    } catch (err) {
+        console.error(err);
+        return res.status(500).json({ success: false, message: "Server Error" });
+    }
+};
+
+// PUT /api/notifications/preferences  { all_enabled?, applied?, mess_transport?, oracle? }
+export const updateNotificationPreferences = async (req, res) => {
+    try {
+        const changes = {};
+        for (const field of PREFERENCE_FIELDS) {
+            if (field in req.body) {
+                if (typeof req.body[field] !== "boolean") {
+                    return res.status(400).json({ success: false, message: `${field} must be true or false` });
+                }
+                changes[field] = req.body[field];
+            }
+        }
+
+        if (Object.keys(changes).length === 0) {
+            return res.status(400).json({ success: false, message: "No preferences to update" });
+        }
+
+        const { data: existing } = await supabase
+            .from("notification_preferences")
+            .select(PREFERENCE_FIELDS.join(", "))
+            .eq("user_id", req.user.id)
+            .maybeSingle();
+
+        const { data, error } = await supabase
+            .from("notification_preferences")
+            .upsert(
+                {
+                    ...DEFAULT_PREFERENCES,
+                    ...existing,
+                    ...changes,
+                    user_id: req.user.id,
+                    updated_at: new Date().toISOString()
+                },
+                { onConflict: "user_id" }
+            )
+            .select(PREFERENCE_FIELDS.join(", "))
+            .single();
+
+        if (error) {
+            console.error(error);
+            return res.status(500).json({ success: false, message: "Error updating notification preferences" });
+        }
+
+        return res.status(200).json({ success: true, preferences: data });
+    } catch (err) {
+        console.error(err);
+        return res.status(500).json({ success: false, message: "Server Error" });
+    }
+};

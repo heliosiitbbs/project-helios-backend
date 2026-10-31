@@ -67,10 +67,35 @@ async function insertNotificationRows(rows) {
     }
 }
 
+// Which Notification Settings toggle (notification_preferences column) each push
+// type falls under. A type not listed here is only silenced by the master switch.
+const NOTIFICATION_CATEGORY = {
+    grievance: "applied",
+    lost_found: "applied",
+    rides: "applied",
+    bug: "applied",
+    timetable: "applied",
+    transport: "mess_transport",
+    news: "oracle"
+};
+
+// Users who switched this type off. They still get the in-app feed row, just
+// no push to their phone.
+async function mutedUserIds(type) {
+    const category = NOTIFICATION_CATEGORY[type];
+    const filter = category ? `all_enabled.eq.false,${category}.eq.false` : "all_enabled.eq.false";
+    const rows = await selectAll(() =>
+        supabase.from("notification_preferences").select("user_id").or(filter).order("user_id")
+    );
+    return new Set(rows.map((r) => String(r.user_id)));
+}
+
 export async function sendPushToUserId(userId, { title, body, data, type }) {
     if (!userId) return;
 
     await insertNotificationRows([{ user_id: userId, type, title, body, data }]);
+
+    if ((await mutedUserIds(type)).has(String(userId))) return;
 
     const { data: tokens } = await supabase
         .from("push_tokens")
@@ -117,7 +142,9 @@ export async function sendPushToAll({ title, body, data, type }) {
 
     await insertNotificationRows(users.map((u) => ({ user_id: u.id, type, title, body, data })));
 
-    const tokens = await selectAll(() => supabase.from("push_tokens").select("expo_push_token").order("expo_push_token"));
+    const muted = await mutedUserIds(type);
+    const tokens = (await selectAll(() => supabase.from("push_tokens").select("user_id, expo_push_token").order("expo_push_token")))
+        .filter((t) => !muted.has(String(t.user_id)));
 
     if (tokens.length) {
         await sendExpoPush(tokens.map((t) => ({ to: t.expo_push_token, title, body, data })));
@@ -146,7 +173,8 @@ export async function sendPushToUsers(items) {
     await insertNotificationRows(list.map(({ userId, type, title, body, data }) => ({ user_id: userId, type, title, body, data })));
 
     const byUser = new Map(list.map((i) => [String(i.userId), i]));
-    const ids = [...byUser.keys()];
+    const muted = await mutedUserIds(list[0].type);
+    const ids = [...byUser.keys()].filter((id) => !muted.has(id));
     const tokens = [];
     for (let i = 0; i < ids.length; i += 300) {
         const { data } = await supabase.from("push_tokens").select("user_id, expo_push_token").in("user_id", ids.slice(i, i + 300));

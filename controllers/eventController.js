@@ -313,58 +313,7 @@ export const scanPass = async (req, res) => {
             });
         }
 
-        if (event.end_time && new Date(event.end_time) < new Date()) {
-            return res.status(403).json({
-                success: false,
-                allowed: false,
-                message: `Access Denied: ${event.event_name} has ended.`
-            });
-        }
-
-        // Only flips an unused pass that belongs to this event
-        const { data: used, error: updateError } = await supabase
-            .from("event_passes")
-            .update({ has_completed: true })
-            .eq("id", pass_id)
-            .eq("event_id", event.event_id)
-            .eq("has_completed", false)
-            .select("id, applicant_id")
-            .maybeSingle();
-
-        if (updateError) throw updateError;
-
-        if (used) {
-            return res.status(200).json({
-                success: true,
-                allowed: true,
-                message: "Access Granted: pass checked in.",
-                applicant_id: used.applicant_id,
-                event_name: event.event_name
-            });
-        }
-
-        // Nothing was updated - work out why
-        const { data: pass, error: fetchError } = await supabase
-            .from("event_passes")
-            .select("event_id, has_completed")
-            .eq("id", pass_id)
-            .maybeSingle();
-
-        if (fetchError) throw fetchError;
-
-        if (!pass || pass.event_id !== event.event_id) {
-            return res.status(404).json({
-                success: false,
-                allowed: false,
-                message: `Access Denied: this pass is not for ${event.event_name}.`
-            });
-        }
-
-        return res.status(409).json({
-            success: false,
-            allowed: false,
-            message: "Access Denied: this pass has already been used."
-        });
+        return await checkInPass(res, event, pass_id);
 
     } catch (err) {
         console.error(err);
@@ -372,6 +321,73 @@ export const scanPass = async (req, res) => {
             success: false,
             message: "Server Error scanning pass."});
     }
+};
+
+// Marks one pass of `event` used and sends the result. Shared by the
+// verification-code scanner above and the verifier-account scanner
+// (verifierController). The pass is flipped with a single conditional update,
+// so two scanners can never both accept the same pass.
+export const checkInPass = async (res, event, pass_id) => {
+    if (!UUID_PATTERN.test(pass_id)) {
+        return res.status(400).json({
+            success: false,
+            allowed: false,
+            message: "This is not a valid Helios event pass."
+        });
+    }
+
+    if (event.end_time && new Date(event.end_time) < new Date()) {
+        return res.status(403).json({
+            success: false,
+            allowed: false,
+            message: `Access Denied: ${event.event_name} has ended.`
+        });
+    }
+
+    // Only flips an unused pass that belongs to this event
+    const { data: used, error: updateError } = await supabase
+        .from("event_passes")
+        .update({ has_completed: true })
+        .eq("id", pass_id)
+        .eq("event_id", event.event_id)
+        .eq("has_completed", false)
+        .select("id, applicant_id")
+        .maybeSingle();
+
+    if (updateError) throw updateError;
+
+    if (used) {
+        return res.status(200).json({
+            success: true,
+            allowed: true,
+            message: "Access Granted: pass checked in.",
+            applicant_id: used.applicant_id,
+            event_name: event.event_name
+        });
+    }
+
+    // Nothing was updated - work out why
+    const { data: pass, error: fetchError } = await supabase
+        .from("event_passes")
+        .select("event_id, has_completed")
+        .eq("id", pass_id)
+        .maybeSingle();
+
+    if (fetchError) throw fetchError;
+
+    if (!pass || pass.event_id !== event.event_id) {
+        return res.status(404).json({
+            success: false,
+            allowed: false,
+            message: `Access Denied: this pass is not for ${event.event_name}.`
+        });
+    }
+
+    return res.status(409).json({
+        success: false,
+        allowed: false,
+        message: "Access Denied: this pass has already been used."
+    });
 };
 
 // ==========================================
