@@ -249,7 +249,7 @@ const validateRows = async (rawRows) => {
 // ---------- notifications ----------
 
 // code -> user ids of students registered for that subject in their current semester
-const studentsTaking = async (codes) => {
+export const studentsTaking = async (codes) => {
   const regs = [];
   for (let i = 0; i < codes.length; i += 300) {
     const { data, error } = await supabase

@@ -1,6 +1,7 @@
 import supabase from "../config/Supabase.js";
 import { sendPushToAll, formatDay, todayOnCampus } from "../utils/pushNotifications.js";
 import { parseRollNumber, resolveProgramme, getDefaultAcademicYear } from "../utils/academics.js";
+import { getMyExamInfo } from "./examTimetableController.js";
 
 // Parses a Postgres "time with time zone" string (e.g. "08:00:00+00") into
 // a decimal hour (e.g. 8.5 for 8:30) so the frontend can position it on a
@@ -173,12 +174,20 @@ export const getMyTimetable = async (req, res) => {
 
     const subjectCodes = [...new Set((registrations || []).map((r) => r["subject code"]))];
 
+    // During an exam period the app shows these exams (with rooms) instead of classes.
+    // A problem here must not take the class timetable down with it.
+    const examInfo = await getMyExamInfo(subjectCodes).catch((err) => {
+      console.error("Failed to load exam timetable", err);
+      return { exam_period: null, exams: [] };
+    });
+
     if (subjectCodes.length === 0) {
       return res.status(200).json({
         success: true,
         semester: currentSemester,
         timetable: [],
-        holidays: holidays || []
+        holidays: holidays || [],
+        ...examInfo
       });
     }
 
@@ -231,7 +240,8 @@ export const getMyTimetable = async (req, res) => {
       success: true,
       semester: currentSemester,
       timetable,
-      holidays: holidays || []
+      holidays: holidays || [],
+      ...examInfo
     });
   } catch (err) {
     console.error(err);

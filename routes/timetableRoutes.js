@@ -22,6 +22,13 @@ import {
   previewTimetableUpload,
   applyTimetableUpload
 } from "../controllers/timetableAdminController.js";
+import {
+  previewExamUpload,
+  applyExamUpload,
+  listExamSchedules,
+  getExamSchedule,
+  deleteExamSchedule
+} from "../controllers/examTimetableController.js";
 import { protect, authorize } from "../middlewares/authMiddleware.js";
 import uploadSpreadsheet from "../middlewares/uploadSpreadsheet.js";
 
@@ -53,4 +60,11 @@ router.post("/admin/timings/apply", protect, timetableAdminRoles, applyTimetable
 router.post("/admin/timings", protect, timetableAdminRoles, addAdminTiming);
 router.patch("/admin/timings/:id", protect, timetableAdminRoles, updateAdminTiming);
 router.delete("/admin/timings/:id", protect, timetableAdminRoles, deleteAdminTiming);
+
+// Exam timetables (mid-sem / end-sem): upload the exam cell's sheet, pick the period
+router.get("/admin/exams", protect, timetableAdminRoles, listExamSchedules);
+router.post("/admin/exams/preview", protect, timetableAdminRoles, uploadSpreadsheet.single("file"), previewExamUpload);
+router.post("/admin/exams/apply", protect, timetableAdminRoles, applyExamUpload);
+router.get("/admin/exams/:id", protect, timetableAdminRoles, getExamSchedule);
+router.delete("/admin/exams/:id", protect, timetableAdminRoles, deleteExamSchedule);
 export default router;
