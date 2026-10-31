@@ -33,6 +33,9 @@ const GRIEVANCE_SELECT =
     '*, Student_Details!inner("Roll Number", "Room No", Hostel_Details, User_Details("User Name", display_name, phone_number))';
 
 // Never send the PIN hash to the browser; only whether a PIN has been set
+// hostel_staff.phone is unique across every hostel - staff sign in with it
+const DUPLICATE_PHONE = "Another staff member (in this or another hostel) already uses this phone number";
+
 const publicStaff = ({ pin_hash, ...member }) => ({ ...member, has_pin: !!pin_hash });
 
 const loadStaff = async (ids) => {
@@ -185,7 +188,10 @@ export const addHostelStaff = async (req, res) => {
         const { row, error: invalid } = readStaffBody(req.body);
         if (invalid) return fail(res, 400, invalid);
         const { data, error } = await supabase.from("hostel_staff").insert([{ ...row, hostel_name: req.user.hostel }]).select().single();
-        if (error) throw error;
+        if (error) {
+            if (error.code === "23505") return fail(res, 409, DUPLICATE_PHONE);
+            throw error;
+        }
         return res.status(201).json({ success: true, member: { ...publicStaff(data), open_grievances: 0 } });
     } catch (err) {
         return serverError(res, err);
@@ -205,7 +211,10 @@ export const updateHostelStaff = async (req, res) => {
             .eq("hostel_name", req.user.hostel)
             .select()
             .maybeSingle();
-        if (error) throw error;
+        if (error) {
+            if (error.code === "23505") return fail(res, 409, DUPLICATE_PHONE);
+            throw error;
+        }
         if (!data) return fail(res, 404, "Staff member not found");
         return res.status(200).json({ success: true, member: publicStaff(data) });
     } catch (err) {
@@ -236,7 +245,7 @@ export const setStaffPin = async (req, res) => {
             .update({ pin_hash: await bcrypt.hash(pin, 10) })
             .eq("id", member.id);
         if (updateError) {
-            if (updateError.code === "23505") return fail(res, 409, "Another staff member already uses this phone number");
+            if (updateError.code === "23505") return fail(res, 409, DUPLICATE_PHONE);
             throw updateError;
         }
 
