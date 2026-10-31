@@ -296,11 +296,37 @@ const notifySubjectChange = (code, name, body) => {
 // ---------- endpoints ----------
 
 // GET /api/timetable/admin/branches -> B.Tech branches (the ones with curricula)
+// How many semesters each programme runs for (the semester buttons on the admin pages)
+const COURSE_SEMESTERS = { "B.Tech": 8, "Dual Degree": 10, "ITEP": 8, "M.Sc": 4, "M.Tech": 4, "M.S. by Research": 4, "Ph.D.": 4 };
+
+// Every branch of every programme, B.Tech first: [{ id, name, course_id, course_name, semesters }]
 export const getTimetableBranches = async (req, res) => {
   try {
-    const { data, error } = await supabase.from("branches").select("id, name").eq("course_id", 1).order("id");
+    const [{ data: courses, error: courseError }, { data: branches, error }] = await Promise.all([
+      supabase.from("courses").select("id, name").order("id"),
+      supabase.from("branches").select("id, name, course_id").order("id")
+    ]);
+    if (courseError) throw courseError;
     if (error) throw error;
-    return res.status(200).json({ success: true, branches: data });
+
+    // A curriculum entered for a later semester than the usual length still gets a button
+    const slots = await pageAll(() => supabase.from("curriculum_slots").select("branch_id, semester"));
+    const maxSemester = new Map();
+    slots.forEach((s) => maxSemester.set(s.branch_id, Math.max(maxSemester.get(s.branch_id) || 0, Number(s.semester) || 0)));
+
+    const courseOrder = new Map(courses.map((c, i) => [c.id, i]));
+    const courseName = new Map(courses.map((c) => [c.id, c.name]));
+    const result = branches
+      .filter((b) => courseName.has(b.course_id))
+      .sort((a, b) => courseOrder.get(a.course_id) - courseOrder.get(b.course_id) || a.id - b.id)
+      .map((b) => ({
+        id: b.id,
+        name: b.name,
+        course_id: b.course_id,
+        course_name: courseName.get(b.course_id),
+        semesters: Math.max(COURSE_SEMESTERS[courseName.get(b.course_id)] || 8, maxSemester.get(b.id) || 0)
+      }));
+    return res.status(200).json({ success: true, branches: result });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ success: false, message: "Server Error" });

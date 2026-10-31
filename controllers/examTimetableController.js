@@ -2,6 +2,7 @@ import xlsx from "xlsx";
 import supabase from "../config/Supabase.js";
 import { sendPushToUsers, todayOnCampus } from "../utils/pushNotifications.js";
 import { studentsTaking } from "./timetableAdminController.js";
+import { parseRollNumber, resolveProgramme } from "../utils/academics.js";
 
 // Exam timetables. The exam cell's sheet lists one row per course per room:
 //   SLOT | DATE | TIME (24 H) | BUILDING | ROOM | COURSE CODE | COURSE NAME | STUDENT COUNT
@@ -9,7 +10,8 @@ import { studentsTaking } from "./timetableAdminController.js";
 // The sheet's own dates are ignored: the admin picks the exam period and which days in
 // it are exam days (Sundays and listed holidays are off by default), and day 1, 2, ...
 // of the sheet land on those days in order. During the period the app shows students
-// their exams and rooms instead of the weekly class timetable.
+// their exams and rooms instead of the weekly class timetable - only students of the
+// programmes the admin ticked (e.g. B.Tech + M.Tech), or everyone if none are ticked.
 
 const MAX_ROWS = 5000;
 
@@ -194,14 +196,40 @@ const readPeriod = (body) => {
     return { start, end };
 };
 
-const overlappingSchedules = async (start, end) => {
+// Programmes (courses.name) an exam timetable is for; [] means every programme.
+// Multipart forms send it as a JSON string.
+const readCourses = async (value) => {
+    let list = value;
+    if (typeof list === "string") {
+        try {
+            list = JSON.parse(list);
+        } catch {
+            list = list.split(",");
+        }
+    }
+    const wanted = [...new Set((Array.isArray(list) ? list : []).map((c) => String(c).trim()).filter(Boolean))];
+    if (!wanted.length) return { courses: [] };
+    const { data, error } = await supabase.from("courses").select("name");
+    if (error) throw error;
+    const known = new Set(data.map((c) => c.name));
+    const unknown = wanted.filter((c) => !known.has(c));
+    if (unknown.length) return { error: `Unknown programme: ${unknown.join(", ")}` };
+    // Ticking every programme is the same as ticking none
+    return { courses: wanted.length === known.size ? [] : wanted };
+};
+
+const coversCourse = (schedule, courseName) => !schedule.courses?.length || schedule.courses.includes(courseName);
+const sharesStudents = (a, b) => !a?.length || !b?.length || a.some((c) => b.includes(c));
+
+// Other exam timetables whose dates overlap AND that are for at least one of the same programmes
+const overlappingSchedules = async (start, end, courses) => {
     const { data, error } = await supabase
         .from("exam_schedules")
-        .select("id, name, start_date, end_date")
+        .select("id, name, start_date, end_date, courses")
         .lte("start_date", end)
         .gte("end_date", start);
     if (error) throw error;
-    return data || [];
+    return (data || []).filter((s) => sharesStudents(s.courses, courses));
 };
 
 // ---------- admin endpoints (Time Table Admin / Super Admin) ----------
@@ -214,6 +242,8 @@ export const previewExamUpload = async (req, res) => {
         if (!req.file) return fail(res, 400, "Attach the exam timetable (.xlsx or .csv)");
         const period = readPeriod(req.body);
         if (period.error) return fail(res, 400, period.error);
+        const { courses, error: courseError } = await readCourses(req.body.courses);
+        if (courseError) return fail(res, 400, courseError);
 
         let raw;
         try {
@@ -241,7 +271,8 @@ export const previewExamUpload = async (req, res) => {
             end_date: period.end,
             calendar,
             suggested_exam_days: suggested,
-            overlapping: await overlappingSchedules(period.start, period.end),
+            courses,
+            overlapping: await overlappingSchedules(period.start, period.end, courses),
             ...result,
         });
     } catch (err) {
@@ -257,6 +288,8 @@ export const applyExamUpload = async (req, res) => {
         if (!name) return fail(res, 400, "Give the exam timetable a name, e.g. Mid-semester exams, Autumn 2026");
         const period = readPeriod(req.body);
         if (period.error) return fail(res, 400, period.error);
+        const { courses, error: courseError } = await readCourses(req.body.courses);
+        if (courseError) return fail(res, 400, courseError);
 
         const input = Array.isArray(req.body.rows) ? req.body.rows : [];
         if (!input.length) return fail(res, 400, "No exam rows to save");
@@ -272,7 +305,7 @@ export const applyExamUpload = async (req, res) => {
             return fail(res, 400, `The sheet has ${days.length} exam days but only ${examDays.length} are selected in the period. Select more days or extend the period.`);
         }
 
-        const overlapping = await overlappingSchedules(period.start, period.end);
+        const overlapping = await overlappingSchedules(period.start, period.end, courses);
         if (overlapping.length && !req.body.replace) {
             return fail(res, 409, `This period overlaps "${overlapping[0].name}" (${overlapping[0].start_date} to ${overlapping[0].end_date}). Confirm replacing it.`);
         }
@@ -287,6 +320,7 @@ export const applyExamUpload = async (req, res) => {
                 start_date: period.start,
                 end_date: period.end,
                 exam_days: examDays.slice(0, days.length),
+                courses: courses.length ? courses : null,
                 file_name: String(req.body.file_name || "").slice(0, 200) || null,
             }])
             .select("*")
@@ -326,7 +360,7 @@ export const applyExamUpload = async (req, res) => {
 
         return res.status(201).json({
             success: true,
-            message: `Saved ${name}: ${summary.courses} courses over ${days.length} exam days.`,
+            message: `Saved ${name}${courses.length ? ` for ${courses.join(", ")}` : ""}: ${summary.courses} courses over ${days.length} exam days.`,
             schedule,
         });
     } catch (err) {
@@ -334,11 +368,32 @@ export const applyExamUpload = async (req, res) => {
     }
 };
 
-// Tells each student taking one of the courses that their exam timetable is out
+// The programme (courses.name) of each of these users, from their roll numbers
+const programmesOf = async (userIds) => {
+    const out = new Map();
+    const ids = [...userIds];
+    for (let i = 0; i < ids.length; i += 300) {
+        const { data, error } = await supabase.from("Student_Details").select('"Roll Number", User_code').in("User_code", ids.slice(i, i + 300));
+        if (error) throw error;
+        data.forEach((st) => {
+            const parsed = parseRollNumber(st["Roll Number"]);
+            out.set(st.User_code, parsed ? resolveProgramme(parsed)?.courseName : null);
+        });
+    }
+    return out;
+};
+
+// Tells each student taking one of the courses (in the chosen programmes) that their exam timetable is out
 const notifyExamTimetable = (schedule, slotRows) => {
     const codes = [...new Set(slotRows.map((r) => r.course_code))];
     studentsTaking(codes)
-        .then((byCode) => {
+        .then(async (byCode) => {
+            if (schedule.courses?.length) {
+                const programme = await programmesOf(new Set([...byCode.values()].flatMap((ids) => [...ids])));
+                byCode.forEach((ids) => ids.forEach((id) => {
+                    if (!schedule.courses.includes(programme.get(id))) ids.delete(id);
+                }));
+            }
             const firstExam = new Map(); // userId -> earliest slot row
             slotRows.forEach((r) => {
                 byCode.get(r.course_code)?.forEach((userId) => {
@@ -376,7 +431,7 @@ export const listExamSchedules = async (req, res) => {
                 .eq("schedule_id", s.id)
                 .range(0, 9999);
             if (slotError) throw slotError;
-            counts.set(s.id, { rooms: slots.length, courses: new Set(slots.map((x) => x.course_code)).size });
+            counts.set(s.id, { rooms: slots.length, course_count: new Set(slots.map((x) => x.course_code)).size });
         }
 
         const today = todayOnCampus();
@@ -384,6 +439,7 @@ export const listExamSchedules = async (req, res) => {
             success: true,
             schedules: schedules.map((s) => ({
                 ...s,
+                programmes: s.courses || [],
                 ...counts.get(s.id),
                 status: s.end_date < today ? "ended" : s.start_date <= today ? "live" : "upcoming",
             })),
@@ -436,19 +492,22 @@ export const deleteExamSchedule = async (req, res) => {
 
 // ---------- students ----------
 
-// The exam period that's on now (or the next one coming up), plus this student's
-// exams in it with their rooms. Used by GET /api/timetable/my-timetable so the app
+// The exam period that's on now (or the next one coming up) for this student's
+// programme, plus their exams in it with rooms. Used by GET /api/timetable/my-timetable so the app
 // can swap the class timetable for exams during the period.
-export const getMyExamInfo = async (subjectCodes) => {
+export const getMyExamInfo = async (subjectCodes, rollNumber) => {
     const today = todayOnCampus();
+    const parsed = parseRollNumber(rollNumber);
+    const courseName = parsed ? resolveProgramme(parsed)?.courseName : null;
+
     const { data: schedules, error } = await supabase
         .from("exam_schedules")
-        .select("id, name, start_date, end_date, exam_days")
+        .select("id, name, start_date, end_date, exam_days, courses")
         .gte("end_date", today)
-        .order("start_date", { ascending: true })
-        .limit(1);
+        .order("start_date", { ascending: true });
     if (error) throw error;
-    const schedule = schedules?.[0];
+    // Only exam timetables for this student's programme (or for everyone)
+    const schedule = (schedules || []).find((s) => coversCourse(s, courseName));
     if (!schedule) return { exam_period: null, exams: [] };
 
     let slots = [];

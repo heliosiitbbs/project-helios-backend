@@ -176,7 +176,7 @@ export const getMyTimetable = async (req, res) => {
 
     // During an exam period the app shows these exams (with rooms) instead of classes.
     // A problem here must not take the class timetable down with it.
-    const examInfo = await getMyExamInfo(subjectCodes).catch((err) => {
+    const examInfo = await getMyExamInfo(subjectCodes, rollNumber).catch((err) => {
       console.error("Failed to load exam timetable", err);
       return { exam_period: null, exams: [] };
     });
